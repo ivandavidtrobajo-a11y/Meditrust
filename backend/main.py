@@ -30,6 +30,21 @@ load_dotenv()
 
 app = FastAPI()
 
+from fastapi import Response
+
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    """Maneja todas las solicitudes OPTIONS (preflight) para CORS."""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*", # O tu dominio específico
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -41,18 +56,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-from fastapi import Response
-
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    return Response(status_code=200)
 
 # Serve frontend static files in production (only if build exists)
-frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
-if frontend_build.exists():
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
-    logging.info("Frontend static files mounted from %s", frontend_build)
+#frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
+#if frontend_build.exists():
+    #from fastapi.staticfiles import StaticFiles
+    #app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
+    #logging.info("Frontend static files mounted from %s", frontend_build)
 
 security = HTTPBearer()
 
