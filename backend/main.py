@@ -41,6 +41,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+from fastapi import Response
+
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return Response(status_code=200)
 
 # Serve frontend static files in production (only if build exists)
 frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
