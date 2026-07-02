@@ -55,6 +55,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    automatic_options=False,
 )
 
 # Serve frontend static files in production (only if build exists)
