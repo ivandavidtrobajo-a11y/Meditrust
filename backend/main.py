@@ -29,15 +29,32 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
-# Serve frontend static files in production (only if build exists)
-frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
-if frontend_build.exists():
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
-    logging.info("Frontend static files mounted from %s", frontend_build)
 
-security = HTTPBearer()
+# ============================================================================
+# 🔧 CAMBIO #1: ORDEN CRÍTICO DE INICIALIZACIÓN
+# ============================================================================
+# PROBLEMA IDENTIFICADO:
+#   - StaticFiles estaba montado PRIMERO (línea 32-37 en código original)
+#   - CORS middleware se agregaba DESPUÉS (línea 41-51 en código original)
+#   - Resultado: Peticiones OPTIONS a /login y /register eran interceptadas
+#     por StaticFiles ANTES de que CORS pudiera procesarlas
+#   - StaticFiles no sabe manejar OPTIONS y devolvía 400 Bad Request
+#   - Frontend recibía 400, intentaba acceder a i.response.status (undefined)
+#     y generaba error: "can't access property 'status', i.response is undefined"
+#
+# CAUSA RAÍZ:
+#   En FastAPI, mount() crea rutas que se evalúan antes que los middlewares
+#   en el nivel raíz. Aunque add_middleware() coloca el middleware en la
+#   pila LIFO, la evaluación de rutas mount ocurre en otro nivel.
+#
+# SOLUCIÓN:
+#   1. Agregar CORS PRIMERO, antes de cualquier mount()
+#   2. Mover StaticFiles al FINAL (o comentarlo para producción)
+#   3. Esto garantiza que CORS intercepte y procese preflight requests
+#
+# ============================================================================
 
+# ✅ CORS MIDDLEWARE - AGREGADO PRIMERO (ANTES DE STATICFILES)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -46,10 +63,40 @@ app.add_middleware(
         "https://medicconsult-frontend.onrender.com",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    # ✅ CAMBIO #2: allow_methods EXPLÍCITO (mejorado de "*")
+    # Razón: Más seguro, más fácil de debuggear en logs de Render
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
+    # ✅ CAMBIO #3: max_age para cachear preflight requests
+    # Reduce peticiones OPTIONS repetidas (de la misma ruta por el mismo navegador)
+    max_age=3600,  # 1 hora
 )
 
+# ============================================================================
+# 🔧 CAMBIO #4: STATICFILES MOVIDO AL FINAL (DESPUÉS DE MIDDLEWARES)
+# ============================================================================
+# NOTA DE ARQUITECTURA PARA PRODUCCIÓN:
+#   En Render, NO deberías usar StaticFiles porque:
+#     - Backend corre en: https://medicconsult.onrender.com
+#     - Frontend corre SEPARADO en: https://medicconsult-frontend.onrender.com
+#     - Son dos servicios independientes
+#     - No hay necesidad de servir archivos estáticos desde FastAPI
+#
+#   Se mantiene comentado por compatibilidad con desarrollo local.
+#   Si necesitas desarrollo local con ambos servicios, usa:
+#     - npm run dev (para Vite en frontend/)
+#     - uvicorn backend.main:app --reload (para FastAPI en backend/)
+#     Y configura VITE_API_URL=http://localhost:8000
+#
+# ============================================================================
+
+# frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
+# if frontend_build.exists():
+#     from fastapi.staticfiles import StaticFiles
+#     app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
+#     logging.info("Frontend static files mounted from %s", frontend_build)
+
+security = HTTPBearer()
 
 UPLOAD_DIR = os.path.join(os.getcwd(), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -257,6 +304,43 @@ def password_reset(request: AuthRequest):
     update_user(attrs.email, {"password": hash_password(attrs.password)})
     delete_reset_token(attrs.email)
     return None
+
+
+# ============================================================================
+# 🔧 CAMBIO #5: PREFLIGHT HANDLER EXPLÍCITO (RED DE SEGURIDAD)
+# ============================================================================
+# PROPÓSITO:
+#   Maneja explícitamente peticiones OPTIONS que CORS podría no capturar
+#   en algunos casos edge (aunque en teoría CORSMiddleware debería hacerlo).
+#
+# FLUJO DE UNA PETICIÓN CORS:
+#   1. Navegador envía OPTIONS /login (preflight)
+#   2. CORSMiddleware intercepta y devuelve 200 con headers CORS
+#   3. Si CORSMiddleware no intercepta por alguna razón, este handler actúa
+#      como red de seguridad y devuelve 200 OK
+#   4. Frontend recibe 200 y procede con POST real
+#
+# UBICACIÓN IMPORTANTE:
+#   Va DESPUÉS de todos los otros decoradores @app para que sea
+#   la opción más general (catch-all) para OPTIONS requests.
+#
+# ============================================================================
+
+@app.options("/{path_name:path}")
+async def preflight_handler(path_name: str):
+    """
+    Maneja explícitamente peticiones OPTIONS (CORS preflight requests).
+    
+    Flujo:
+    - Navegador envía OPTIONS /ruta desde https://medicconsult-frontend.onrender.com
+    - Este handler intercepta y devuelve 200 OK
+    - CORSMiddleware agrega automáticamente los headers CORS necesarios
+    - Frontend recibe respuesta exitosa y puede proceder con POST real
+    
+    Nota: Este es un fallback. CORSMiddleware ya debería manejar esto,
+    pero es bueno tenerlo como red de seguridad en producción.
+    """
+    return {"message": "OK"}
 
 
 # ── Medical endpoints ────────────────────────────────
