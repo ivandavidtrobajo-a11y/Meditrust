@@ -29,6 +29,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+# Serve frontend static files in production (only if build exists)
+frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
+if frontend_build.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
+    logging.info("Frontend static files mounted from %s", frontend_build)
+
+security = HTTPBearer()
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,14 +50,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-Serve frontend static files in production (only if build exists)
-frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
-if frontend_build.exists():
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
-    logging.info("Frontend static files mounted from %s", frontend_build)
-
-security = HTTPBearer()
 
 UPLOAD_DIR = os.path.join(os.getcwd(), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
