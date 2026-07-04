@@ -28,66 +28,66 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ============================================================================
+# 🔥 INICIALIZACIÓN CRÍTICA: CREAR APP SOLO DESPUÉS DE LOAD_DOTENV
+# ============================================================================
 app = FastAPI()
 
 # ============================================================================
-# 🔧 CAMBIO #1: ORDEN CRÍTICO DE INICIALIZACIÓN
+# 🔧 CORS MIDDLEWARE - CONFIGURACIÓN AGRESIVA Y EXPLÍCITA
 # ============================================================================
-# PROBLEMA IDENTIFICADO:
-#   - StaticFiles estaba montado PRIMERO (línea 32-37 en código original)
-#   - CORS middleware se agregaba DESPUÉS (línea 41-51 en código original)
-#   - Resultado: Peticiones OPTIONS a /login y /register eran interceptadas
-#     por StaticFiles ANTES de que CORS pudiera procesarlas
-#   - StaticFiles no sabe manejar OPTIONS y devolvía 400 Bad Request
-#   - Frontend recibía 400, intentaba acceder a i.response.status (undefined)
-#     y generaba error: "can't access property 'status', i.response is undefined"
-#
-# CAUSA RAÍZ:
-#   En FastAPI, mount() crea rutas que se evalúan antes que los middlewares
-#   en el nivel raíz. Aunque add_middleware() coloca el middleware en la
-#   pila LIFO, la evaluación de rutas mount ocurre en otro nivel.
-#
-# SOLUCIÓN:
-#   1. Agregar CORS PRIMERO, antes de cualquier mount()
-#   2. Mover StaticFiles al FINAL (o comentarlo para producción)
-#   3. Esto garantiza que CORS intercepte y procese preflight requests
-#
+# IMPORTANTE: Este middleware DEBE estar PRIMERO en la inicialización
+# Cualquier middleware, mount o decorator que se agregue después puede
+# interferir con el procesamiento de CORS si no se ordena correctamente
 # ============================================================================
 
-# ✅ CORS MIDDLEWARE - AGREGADO PRIMERO (ANTES DE STATICFILES)
+# Configuración flexible de origins basada en variables de entorno
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://medicconsult-frontend.onrender.com",
+]
+
+# Agregar más origins si existen en variables de entorno
+env_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+ALLOWED_ORIGINS.extend([origin.strip() for origin in env_origins if origin.strip()])
+
+logging.info(f"CORS configured for origins: {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://medicconsult-frontend.onrender.com",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    # ✅ CAMBIO #2: allow_methods EXPLÍCITO (mejorado de "*")
-    # Razón: Más seguro, más fácil de debuggear en logs de Render
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    # 🔥 EXPLÍCITAMENTE PERMITIR OPTIONS
+    allow_methods=["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE"],
     allow_headers=["*"],
-    # ✅ CAMBIO #3: max_age para cachear preflight requests
-    # Reduce peticiones OPTIONS repetidas (de la misma ruta por el mismo navegador)
-    max_age=3600,  # 1 hora
+    expose_headers=["*"],
+    max_age=86400,  # 24 horas de cacheo de preflight
 )
 
 # ============================================================================
-# 🔧 CAMBIO #4: STATICFILES MOVIDO AL FINAL (DESPUÉS DE MIDDLEWARES)
+# 🔥 PREFLIGHT HANDLER - CATCH-ALL ANTES DE CUALQUIER OTRA RUTA
 # ============================================================================
-# NOTA DE ARQUITECTURA PARA PRODUCCIÓN:
-#   En Render, NO deberías usar StaticFiles porque:
-#     - Backend corre en: https://medicconsult.onrender.com
-#     - Frontend corre SEPARADO en: https://medicconsult-frontend.onrender.com
-#     - Son dos servicios independientes
-#     - No hay necesidad de servir archivos estáticos desde FastAPI
-#
-#   Se mantiene comentado por compatibilidad con desarrollo local.
-#   Si necesitas desarrollo local con ambos servicios, usa:
-#     - npm run dev (para Vite en frontend/)
-#     - uvicorn backend.main:app --reload (para FastAPI en backend/)
-#     Y configura VITE_API_URL=http://localhost:8000
-#
+# Este debe ser el PRIMER endpoint porque FastAPI evalúa los decoradores
+# en orden. Si va después de otras rutas, puede haber conflictos.
+# ============================================================================
+
+@app.options("/{full_path:path}")
+async def preflight_handler(full_path: str):
+    """
+    🔥 HANDLER CRÍTICO: Intercepta TODAS las peticiones OPTIONS
+    y las responde con 200 OK. CORSMiddleware agrega automáticamente
+    los headers CORS necesarios.
+    
+    Esto es ESENCIAL en Render porque a veces los middlewares
+    no se ejecutan en el orden esperado.
+    """
+    logging.info(f"✅ Preflight request to /{full_path} - returning 200 OK")
+    return {"status": "ok", "message": "CORS preflight successful"}
+
+
+# ============================================================================
+# RESTO DE LA CONFIGURACIÓN
 # ============================================================================
 
 # frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
@@ -117,7 +117,7 @@ class QuestionRequest(BaseModel):
     model: str = None
 
 
-# ── Auth models ─────────────────────────────────────
+# ── Auth models ──��──────────────────────────────────
 
 class AuthAttributes(BaseModel):
     email: str
@@ -306,43 +306,6 @@ def password_reset(request: AuthRequest):
     return None
 
 
-# ============================================================================
-# 🔧 CAMBIO #5: PREFLIGHT HANDLER EXPLÍCITO (RED DE SEGURIDAD)
-# ============================================================================
-# PROPÓSITO:
-#   Maneja explícitamente peticiones OPTIONS que CORS podría no capturar
-#   en algunos casos edge (aunque en teoría CORSMiddleware debería hacerlo).
-#
-# FLUJO DE UNA PETICIÓN CORS:
-#   1. Navegador envía OPTIONS /login (preflight)
-#   2. CORSMiddleware intercepta y devuelve 200 con headers CORS
-#   3. Si CORSMiddleware no intercepta por alguna razón, este handler actúa
-#      como red de seguridad y devuelve 200 OK
-#   4. Frontend recibe 200 y procede con POST real
-#
-# UBICACIÓN IMPORTANTE:
-#   Va DESPUÉS de todos los otros decoradores @app para que sea
-#   la opción más general (catch-all) para OPTIONS requests.
-#
-# ============================================================================
-
-@app.options("/{path_name:path}")
-async def preflight_handler(path_name: str):
-    """
-    Maneja explícitamente peticiones OPTIONS (CORS preflight requests).
-    
-    Flujo:
-    - Navegador envía OPTIONS /ruta desde https://medicconsult-frontend.onrender.com
-    - Este handler intercepta y devuelve 200 OK
-    - CORSMiddleware agrega automáticamente los headers CORS necesarios
-    - Frontend recibe respuesta exitosa y puede proceder con POST real
-    
-    Nota: Este es un fallback. CORSMiddleware ya debería manejar esto,
-    pero es bueno tenerlo como red de seguridad en producción.
-    """
-    return {"message": "OK"}
-
-
 # ── Medical endpoints ────────────────────────────────
 
 @app.get("/")
@@ -482,7 +445,7 @@ def _generar_contexto(ds: dict, filename: str) -> str:
     return "\n".join(lines)
 
 
-# ── Dashboard ────────────────────────────────────────
+# ── Dashboard ──────────────────���─────────────────────
 
 @app.get("/dashboard")
 def dashboard_data():
