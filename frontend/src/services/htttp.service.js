@@ -29,7 +29,12 @@ export class HttpService {
       method,
       url,
       data,
-      headers: { "Content-Type": "application/json", "Accept": "application/json", 'Access-Control-Allow-Credentials': true },
+      // ✅ withCredentials para JWT en cookies
+      withCredentials: true,
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
     };
   };
 
@@ -39,8 +44,26 @@ export class HttpService {
         .request(options)
         .then((res) => resolve(res.data))
         .catch((ex) => {
-          const errorData = ex?.response?.data || { message: ex?.message || "Network error" };
-          reject(errorData);
+          // ✅ SOLUCIÓN: Rechaza el error COMPLETO, no solo .data
+          // Antes: reject(ex?.response?.data || { message: ex?.message })
+          // Problema: Pierde status y metadata del error
+          // Después: reject(errorObject) con status, data, message
+          
+          const errorObject = {
+            // Status HTTP (si la petición llegó al servidor)
+            status: ex?.response?.status || null,
+            // Datos de error del servidor
+            data: ex?.response?.data || null,
+            // Mensaje genérico (si no hay respuesta del servidor)
+            message: ex?.message || "Network error",
+            // Flag para debugging: ¿recibimos respuesta HTTP?
+            hasResponse: !!ex?.response,
+            // Flag para debugging: ¿se envió la petición?
+            hasRequest: !!ex?.request,
+          };
+
+          console.error("HTTP Service Error:", errorObject);
+          reject(errorObject);
         });
     });
   }

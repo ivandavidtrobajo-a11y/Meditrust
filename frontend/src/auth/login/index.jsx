@@ -85,11 +85,35 @@ function Login() {
 
     try {
       const response = await AuthService.login(myData);
-      authContext.login(response.access_token, response.refresh_token);
+      
+      // ✅ Validar respuesta
+      if (response && response.access_token) {
+        authContext.login(response.access_token, response.refresh_token);
+      } else {
+        throw new Error("No se recibió token del servidor");
+      }
     } catch (res) {
-      const message = res?.message || res?.errors?.[0]?.detail || "Error al iniciar sesión. Revisa la consola.";
-      setCredentialsError(message);
+      // ✅ SOLUCIÓN: Error handling robusto con mensajes específicos
       console.error("Login error:", res);
+      
+      let message = "Error al iniciar sesión";
+      
+      // Mensajes específicos según el tipo de error
+      if (res?.status === 400) {
+        message = "Email o contraseña incorrectos";
+      } else if (res?.status === 401) {
+        message = "No autorizado";
+      } else if (res?.status === 403) {
+        message = "Acceso denegado";
+      } else if (res?.status === 0 || res?.message?.includes("Network")) {
+        message = "Error de conexión. Verifica que el servidor esté disponible";
+      } else if (res?.message) {
+        message = res.message;
+      } else if (res?.data?.detail) {
+        message = res.data.detail;
+      }
+      
+      setCredentialsError(message);
     }
 
     return () => {

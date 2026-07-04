@@ -95,27 +95,49 @@ function Register() {
 
     try {
       const response = await AuthService.register(myData);
-      authContext.login(response.access_token, response.refresh_token);
+      
+      // ✅ Validar respuesta
+      if (response && response.access_token) {
+        authContext.login(response.access_token, response.refresh_token);
 
-      setInputs({
-        name: "",
-        email: "",
-        password: "",
-        agree: false,
-      });
+        setInputs({
+          name: "",
+          email: "",
+          password: "",
+          agree: false,
+        });
 
-      setErrors({
-        nameError: false,
-        emailError: false,
-        passwordError: false,
-        agreeError: false,
-        error: false,
-        errorText: "",
-      });
+        setErrors({
+          nameError: false,
+          emailError: false,
+          passwordError: false,
+          agreeError: false,
+          error: false,
+          errorText: "",
+        });
+      } else {
+        throw new Error("No se recibió token del servidor");
+      }
     } catch (err) {
-      const message = err?.message || "Error al registrar. Revisa la consola.";
-      setErrors({ ...errors, error: true, errorText: message });
+      // ✅ SOLUCIÓN: Error handling robusto con mensajes específicos
       console.error("Register error:", err);
+      
+      let message = "Error al registrar";
+      
+      // Mensajes específicos según el tipo de error
+      if (err?.status === 400) {
+        message = "El email ya está registrado o datos inválidos";
+      } else if (err?.status === 401) {
+        message = "No autorizado para registrarse";
+      } else if (err?.status === 0 || err?.message?.includes("Network")) {
+        message = "Error de conexión. Verifica que el servidor esté disponible";
+      } else if (err?.message) {
+        message = err.message;
+      } else if (err?.data?.detail) {
+        message = err.data.detail;
+      }
+      
+      setErrors({ ...errors, error: true, errorText: message });
     }
   };
 
