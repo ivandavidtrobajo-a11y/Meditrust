@@ -4,7 +4,7 @@ import { createContext, useContext, useReducer, useMemo, useState, useEffect } f
 
 // prop-types is a library for typechecking of props
 import PropTypes from "prop-types";
-import { useLocation, useNavigate } from "react-router-dom";
+
 
 // Material Dashboard 2 React main context
 const MaterialUI = createContext();
@@ -30,11 +30,10 @@ const AuthContextProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const navigate = useNavigate();
-  const location = useLocation();
-
+  
   const token = localStorage.getItem("token");
-
-  useEffect(() => {
+#--------
+ useEffect(() => {
     if (!token || isTokenExpired(token)) {
       localStorage.removeItem("token");
       setIsAuthenticated(false);
@@ -42,20 +41,8 @@ const AuthContextProvider = ({ children }) => {
     }
 
     setIsAuthenticated(true);
-    navigate(location.pathname);
   }, []);
-
-  useEffect(() => {
-    if (!token || isTokenExpired(token)) {
-      localStorage.removeItem("token");
-      setIsAuthenticated(false);
-      return;
-    }
-
-    setIsAuthenticated(isAuthenticated);
-    navigate(location.pathname);
-  }, [isAuthenticated]);
-
+  #--------
   const login = (token) => {
     localStorage.setItem("token", token);
     setIsAuthenticated(true);
