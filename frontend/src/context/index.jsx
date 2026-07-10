@@ -32,7 +32,7 @@ const AuthContextProvider = ({ children }) => {
   const navigate = useNavigate();
   
   const token = localStorage.getItem("token");
-#--------
+//--------
  useEffect(() => {
     if (!token || isTokenExpired(token)) {
       localStorage.removeItem("token");
@@ -42,7 +42,7 @@ const AuthContextProvider = ({ children }) => {
 
     setIsAuthenticated(true);
   }, []);
-  #--------
+  //--------
   const login = (token) => {
     localStorage.setItem("token", token);
     setIsAuthenticated(true);
