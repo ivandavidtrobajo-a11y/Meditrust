@@ -65,8 +65,7 @@ function Medistrust() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [docSearch, setDocSearch] = useState("");
 
-  const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
-
+  const API_BASE = import.meta.env.VITE_AI_API_URL || "";
   // Layout: full screen (hide menu) while component is mounted
   useEffect(() => {
     setLayout(dispatch, "vr");
