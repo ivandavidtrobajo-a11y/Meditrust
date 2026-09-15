@@ -27,6 +27,15 @@ class Neo4jConnection:
         self.driver.verify_connectivity()
         return True
 
+    def execute_query(self, query, parameters=None):
+        result = self.driver.execute_query(
+            query,
+            parameters or {},
+            database_=self.database
+        )
+
+        return result
+
     def close(self):
         self.driver.close()
 
