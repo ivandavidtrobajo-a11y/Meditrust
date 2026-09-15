@@ -25,8 +25,14 @@ import secrets
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
+from database.neo4j_schema import create_constraints
 
 load_dotenv()
+try:
+    create_constraints()
+    logging.info("Esquema de Neo4j inicializado correctamente")
+except Exception as e:
+    logging.error(f"Error inicializando Neo4j: {e}")
 
 app = FastAPI()
 # Serve frontend static files in production (only if build exists)
