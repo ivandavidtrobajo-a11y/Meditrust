@@ -1,6 +1,7 @@
 import pandas as pd
 from database.datasets_db import save_dataset
 from database.mongodb import get_db
+from database.neo4j import neo4j_connection
 
 
 def _detectar_formato_excel(df):
@@ -103,6 +104,12 @@ def parse_and_insert_consolidado(file_path, documento_nombre=None):
         }
 
         save_dataset(doc)
+        neo4j_connection.insert_medical_graph(
+            policlinico=doc["policlinico"],
+            cmfs=doc["cmfs"],
+            conceptos=doc["conceptos"],
+            filename=doc["filename"]
+        )
         return True
 
     except Exception as e:
