@@ -71,10 +71,35 @@ class Neo4jConnection:
             queries_executed += 1
 
        # 3. Crear conceptos y registros
-        for concepto in conceptos:
-            concepto_nombre = concepto.get("nombre")
-            total_general = concepto.get("total_general", 0)
-            tipo = concepto.get("tipo", "concepto")
+            for cmf_nombre, valor in concepto.get("registros", {}).items():
+    
+                self.execute_query(
+                     """
+                     MATCH (c:CMF {
+                     nombre: $cmf,
+                     policlinico: $policlinico
+                     })
+    
+                     MATCH (con:Concepto {
+                     nombre: $concepto
+                     })
+    
+                     CREATE (r:Registro {
+                     valor: $valor
+                     })
+    
+                     MERGE (r)-[:REGISTRADO_EN]->(c)
+                     MERGE (r)-[:CORRESPONDE_A]->(con)
+                     """,
+                     {
+                     "cmf": cmf_nombre,
+                     "policlinico": policlinico,
+                     "concepto": concepto_nombre,
+                     "valor": valor
+                     }
+                )
+    
+                queries_executed += 1
 
         # Concepto principal
             self.execute_query(
