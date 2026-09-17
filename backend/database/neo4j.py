@@ -146,7 +146,7 @@ class Neo4jConnection:
 
         queries_executed += 2
 
-        return queries_executed
+     return queries_executed
     
     def close(self):
         self.driver.close()
