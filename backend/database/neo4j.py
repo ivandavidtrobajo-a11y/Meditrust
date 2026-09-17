@@ -38,61 +38,61 @@ class Neo4jConnection:
     def insert_medical_graph(self, policlinico, cmfs, conceptos, filename=None):
         queries_executed = 0
 
-    # 1. Crear policlínico
-    self.execute_query(
-        """
-        MERGE (p:Policlinico {nombre: $nombre})
-        """,
-        {"nombre": policlinico}
-    )
-    queries_executed += 1
-
-    # 2. Crear CMF y relacionarlo con el policlínico
-    for cmf in cmfs:
-        cmf_nombre = cmf.get("nombre")
-
+        # 1. Crear policlínico
         self.execute_query(
             """
-            MERGE (c:CMF {
-                nombre: $nombre,
-                policlinico: $policlinico
-            })
-
-            WITH c
-            MATCH (p:Policlinico {nombre: $policlinico})
-
-            MERGE (c)-[:PERTENECE_A]->(p)
+            MERGE (p:Policlinico {nombre: $nombre})
             """,
-            {
-                "nombre": cmf_nombre,
-                "policlinico": policlinico
-            }
+           {"nombre": policlinico}
         )
         queries_executed += 1
 
-    # 3. Crear conceptos y registros
-    for concepto in conceptos:
-        concepto_nombre = concepto.get("nombre")
-        total_general = concepto.get("total_general", 0)
-        tipo = concepto.get("tipo", "concepto")
+       # 2. Crear CMF y relacionarlo con el policlínico
+       for cmf in cmfs:
+           cmf_nombre = cmf.get("nombre")
+
+           self.execute_query(
+               """
+               MERGE (c:CMF {
+                nombre: $nombre,
+                policlinico: $policlinico
+               })
+
+               WITH c
+               MATCH (p:Policlinico {nombre: $policlinico})
+
+               MERGE (c)-[:PERTENECE_A]->(p)
+               """,
+               {
+                "nombre": cmf_nombre,
+                "policlinico": policlinico
+               }
+         )
+         queries_executed += 1
+
+       # 3. Crear conceptos y registros
+       for concepto in conceptos:
+           concepto_nombre = concepto.get("nombre")
+           total_general = concepto.get("total_general", 0)
+           tipo = concepto.get("tipo", "concepto")
 
         # Concepto principal
-        self.execute_query(
-            """
-            MERGE (con:Concepto {nombre: $nombre})
-            SET con.total_general = $total_general,
+            self.execute_query(
+                """
+                MERGE (con:Concepto {nombre: $nombre})
+                SET con.total_general = $total_general,
                 con.tipo = $tipo
-            """,
-            {
+                """,
+                {
                 "nombre": concepto_nombre,
                 "total_general": total_general,
                 "tipo": tipo
-            }
-        )
-        queries_executed += 1
+                }
+            )
+            queries_executed += 1
 
         # Registros asociados a cada CMF
-        for registro in concepto.get("registros", []):
+       for registro in concepto.get("registros", []):
             cmf_nombre = registro.get("cmf")
             valor = registro.get("valor", 0)
 
@@ -124,29 +124,29 @@ class Neo4jConnection:
             queries_executed += 1
 
     # 4. Documento de origen
-    if filename:
-        self.execute_query(
+       if filename:
+          self.execute_query(
             """
             MERGE (d:Documento {nombre: $nombre})
             """,
             {"nombre": filename}
-        )
+          )
 
-        self.execute_query(
-            """
-            MATCH (d:Documento {nombre: $documento})
-            MATCH (p:Policlinico {nombre: $policlinico})
-            MERGE (d)-[:CORRESPONDE_A]->(p)
-            """,
-            {
+          self.execute_query(
+              """
+              MATCH (d:Documento {nombre: $documento})
+              MATCH (p:Policlinico {nombre: $policlinico})
+              MERGE (d)-[:CORRESPONDE_A]->(p)
+              """,
+             {
                 "documento": filename,
                 "policlinico": policlinico
-            }
-        )
+             }
+          )
 
-        queries_executed += 2
+          queries_executed += 2
 
-    return queries_executed
+      return queries_executed
     
     def close(self):
         self.driver.close()
