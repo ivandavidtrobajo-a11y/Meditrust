@@ -142,9 +142,9 @@ class Neo4jConnection:
                 "documento": filename,
                 "policlinico": policlinico
                }
-            )
+           )
 
-            queries_executed += 2
+           queries_executed += 2
 
         return queries_executed
     
