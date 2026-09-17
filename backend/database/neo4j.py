@@ -124,7 +124,7 @@ class Neo4jConnection:
             queries_executed += 1
 
     # 4. Documento de origen
-       if filename:
+    if filename:
           self.execute_query(
             """
             MERGE (d:Documento {nombre: $nombre})
