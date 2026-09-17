@@ -36,7 +36,7 @@ class Neo4jConnection:
 
         return result
     def insert_medical_graph(self, policlinico, cmfs, conceptos, filename=None):
-    queries_executed = 0
+        queries_executed = 0
 
     # 1. Crear policlínico
     self.execute_query(
