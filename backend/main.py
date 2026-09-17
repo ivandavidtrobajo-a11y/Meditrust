@@ -26,6 +26,7 @@ import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
+from services.neo4j_selector import select_medical_data
 
 load_dotenv()
 try:
@@ -403,7 +404,25 @@ def _generar_contexto(ds: dict, filename: str) -> str:
     lines.append("--- FIN DEL CONTEXTO ---")
     return "\n".join(lines)
 
+#_______neo4j_test______________________________________
+@app.get("/neo4j-test")
+def neo4j_test(question: str):
+    try:
+        result = select_medical_data(question)
 
+        return {
+            "success": True,
+            "question": question,
+            "cmf": result.get("cmf"),
+            "concepto": result.get("concepto"),
+            "data": result.get("data", [])
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 # ── Dashboard ────────────────────────────────────────
 
 @app.get("/dashboard")
