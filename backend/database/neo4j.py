@@ -124,29 +124,29 @@ class Neo4jConnection:
             queries_executed += 1
 
     # 4. Documento de origen
-    if filename:
-          self.execute_query(
+        if filename:
+           self.execute_query(
             """
             MERGE (d:Documento {nombre: $nombre})
             """,
             {"nombre": filename}
-          )
+           )
 
-          self.execute_query(
-              """
-              MATCH (d:Documento {nombre: $documento})
-              MATCH (p:Policlinico {nombre: $policlinico})
-              MERGE (d)-[:CORRESPONDE_A]->(p)
-              """,
-             {
+           self.execute_query(
+               """
+               MATCH (d:Documento {nombre: $documento})
+               MATCH (p:Policlinico {nombre: $policlinico})
+               MERGE (d)-[:CORRESPONDE_A]->(p)
+               """,
+               {
                 "documento": filename,
                 "policlinico": policlinico
-             }
-          )
+               }
+            )
 
-          queries_executed += 2
+            queries_executed += 2
 
-    return queries_executed
+        return queries_executed
     
     def close(self):
         self.driver.close()
