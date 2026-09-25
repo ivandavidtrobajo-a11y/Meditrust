@@ -35,32 +35,97 @@ class Neo4jConnection:
         )
 
         return result
-    def insert_medical_graph(self, policlinico, cmfs, conceptos, filename=None):
-        queries_executed = 0
-
-        # 1. Crear policlínico
+    def insert_medical_graph(
+        self,
+        policlinico,
+        cmfs,
+        conceptos,
+        filename=None
+    ):
+        """
+        Inserta el dataset médico en Neo4j.
+    
+        Estructura:
+    
+        Policlínico
+            |
+            └── CMF
+                  |
+                  └── Registro
+                        |
+                        └── Concepto
+        """
+    
+        # ---------------------------------------------------------
+        # 1. Policlínico
+        # ---------------------------------------------------------
+    
         self.execute_query(
             """
-            MERGE (p:Policlinico {nombre: $nombre})
+            MERGE (p:Policlinico {nombre: $policlinico})
             """,
-           {"nombre": policlinico}
+            {
+                "policlinico": policlinico
+            }
         )
-        queries_executed += 1
-
-       # 2. Crear CMF y relacionarlo con el policlínico
+    
+        # ---------------------------------------------------------
+        # 2. Documento
+        # ---------------------------------------------------------
+    
+        if filename:
+            self.execute_query(
+                """
+                MERGE (d:Documento {nombre: $filename})
+                SET d.policlinico = $policlinico
+                """,
+                {
+                    "filename": filename,
+                    "policlinico": policlinico
+                }
+            )
+    
+            self.execute_query(
+                """
+                MATCH (d:Documento {nombre: $filename})
+                MATCH (p:Policlinico {nombre: $policlinico})
+                MERGE (d)-[:PERTENECE_A]->(p)
+                """,
+                {
+                    "filename": filename,
+                    "policlinico": policlinico
+                }
+            )
+    
+        # ---------------------------------------------------------
+        # 3. CMF
+        # ---------------------------------------------------------
+    
         for cmf in cmfs:
+    
+            # Nuestro parser actual produce strings:
+            # "CMF 1", "CMF 2", etc.
             if isinstance(cmf, dict):
                 cmf_nombre = cmf.get("nombre")
             else:
                 cmf_nombre = str(cmf).strip()
-        
+    
             if not cmf_nombre:
                 continue
-        
+    
             self.execute_query(
                 """
-                MERGE (c:CMF {nombre: $cmf_nombre, policlinico: $policlinico})
-                MERGE (p:Policlinico {nombre: $policlinico})
+                MERGE (c:CMF {
+                    nombre: $cmf_nombre,
+                    policlinico: $policlinico
+                })
+    
+                WITH c
+    
+                MATCH (p:Policlinico {
+                    nombre: $policlinico
+                })
+    
                 MERGE (c)-[:PERTENECE_A]->(p)
                 """,
                 {
@@ -68,111 +133,105 @@ class Neo4jConnection:
                     "policlinico": policlinico
                 }
             )
-       # 3. Crear conceptos y registros
-            for cmf_nombre, valor in concepto.get("registros", {}).items():
     
-                self.execute_query(
-                     """
-                     MATCH (c:CMF {
-                     nombre: $cmf,
-                     policlinico: $policlinico
-                     })
+        # ---------------------------------------------------------
+        # 4. Conceptos y registros
+        # ---------------------------------------------------------
     
-                     MATCH (con:Concepto {
-                     nombre: $concepto
-                     })
+        for concepto in conceptos:
     
-                     CREATE (r:Registro {
-                     valor: $valor
-                     })
+            nombre = concepto.get("nombre")
     
-                     MERGE (r)-[:REGISTRADO_EN]->(c)
-                     MERGE (r)-[:CORRESPONDE_A]->(con)
-                     """,
-                     {
-                     "cmf": cmf_nombre,
-                     "policlinico": policlinico,
-                     "concepto": concepto_nombre,
-                     "valor": valor
-                     }
-                )
+            if not nombre:
+                continue
     
-                queries_executed += 1
-
-        # Concepto principal
+            total_general = concepto.get("total_general")
+            tipo = concepto.get("tipo", "Concepto")
+    
+            # -----------------------------------------------------
+            # Crear concepto
+            # -----------------------------------------------------
+    
             self.execute_query(
                 """
-                MERGE (con:Concepto {nombre: $nombre})
-                SET con.total_general = $total_general,
-                con.tipo = $tipo
-                """,
-                {
-                "nombre": concepto_nombre,
-                "total_general": total_general,
-                "tipo": tipo
-                }
-            )
-            queries_executed += 1
-
-        # Registros asociados a cada CMF
-        for registro in concepto.get("registros", []):
-            cmf_nombre = registro.get("cmf")
-            valor = registro.get("valor", 0)
-
-            self.execute_query(
-                """
-                MATCH (c:CMF {
-                    nombre: $cmf,
+                MERGE (con:Concepto {
+                    nombre: $nombre,
                     policlinico: $policlinico
                 })
-
-                MATCH (con:Concepto {
-                    nombre: $concepto
-                })
-
-                CREATE (r:Registro {
-                    valor: $valor
-                })
-
-                MERGE (r)-[:REGISTRADO_EN]->(c)
-                MERGE (r)-[:CORRESPONDE_A]->(con)
+    
+                SET con.total_general = $total_general,
+                    con.tipo = $tipo
                 """,
                 {
-                    "cmf": cmf_nombre,
+                    "nombre": nombre,
                     "policlinico": policlinico,
-                    "concepto": concepto_nombre,
-                    "valor": valor
+                    "total_general": total_general,
+                    "tipo": tipo
                 }
             )
-            queries_executed += 1
-
-    # 4. Documento de origen
-        if filename:
-           self.execute_query(
-            """
-            MERGE (d:Documento {nombre: $nombre})
-            """,
-            {"nombre": filename}
-           )
-
-           self.execute_query(
-               """
-               MATCH (d:Documento {nombre: $documento})
-               MATCH (p:Policlinico {nombre: $policlinico})
-               MERGE (d)-[:CORRESPONDE_A]->(p)
-               """,
-               {
-                "documento": filename,
-                "policlinico": policlinico
-               }
-           )
-
-           queries_executed += 2
-
-        return queries_executed
     
-    def close(self):
-        self.driver.close()
-
-
-neo4j_connection = Neo4jConnection()
+            # -----------------------------------------------------
+            # Documento -> Concepto
+            # -----------------------------------------------------
+    
+            if filename:
+                self.execute_query(
+                    """
+                    MATCH (d:Documento {nombre: $filename})
+                    MATCH (con:Concepto {
+                        nombre: $nombre,
+                        policlinico: $policlinico
+                    })
+    
+                    MERGE (d)-[:CONTIENE]->(con)
+                    """,
+                    {
+                        "filename": filename,
+                        "nombre": nombre,
+                        "policlinico": policlinico
+                    }
+                )
+    
+            # -----------------------------------------------------
+            # Registros CMF
+            # -----------------------------------------------------
+    
+            registros = concepto.get("registros", {})
+    
+            for cmf_nombre, valor in registros.items():
+    
+                if valor is None:
+                    continue
+    
+                self.execute_query(
+                    """
+                    MATCH (c:CMF {
+                        nombre: $cmf_nombre,
+                        policlinico: $policlinico
+                    })
+    
+                    MATCH (con:Concepto {
+                        nombre: $nombre,
+                        policlinico: $policlinico
+                    })
+    
+                    CREATE (r:Registro {
+                        valor: $valor
+                    })
+    
+                    MERGE (r)-[:REGISTRADO_EN]->(c)
+                    MERGE (r)-[:CORRESPONDE_A]->(con)
+                    """,
+                    {
+                        "cmf_nombre": cmf_nombre,
+                        "policlinico": policlinico,
+                        "nombre": nombre,
+                        "valor": float(valor)
+                    }
+                )
+    
+        print(
+            f"Grafo insertado correctamente: "
+            f"{len(cmfs)} CMF, "
+            f"{len(conceptos)} conceptos"
+        )
