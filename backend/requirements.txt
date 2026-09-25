@@ -64,3 +64,4 @@ python-multipart==0.0.18
 python-jose==3.3.0
 pymongo==4.10.0
 neo4j
+xlrd>=2.0.1
