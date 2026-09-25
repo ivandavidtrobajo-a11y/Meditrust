@@ -235,3 +235,5 @@ class Neo4jConnection:
             f"{len(cmfs)} CMF, "
             f"{len(conceptos)} conceptos"
         )
+
+neo4j_connection = Neo4jConnection()
