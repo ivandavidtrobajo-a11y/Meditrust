@@ -49,27 +49,25 @@ class Neo4jConnection:
 
        # 2. Crear CMF y relacionarlo con el policlínico
         for cmf in cmfs:
-            cmf_nombre = cmf.get("nombre")
-
+            if isinstance(cmf, dict):
+                cmf_nombre = cmf.get("nombre")
+            else:
+                cmf_nombre = str(cmf).strip()
+        
+            if not cmf_nombre:
+                continue
+        
             self.execute_query(
                 """
-                MERGE (c:CMF {
-                nombre: $nombre,
-                policlinico: $policlinico
-                })
-
-                WITH c
-                MATCH (p:Policlinico {nombre: $policlinico})
-
+                MERGE (c:CMF {nombre: $cmf_nombre, policlinico: $policlinico})
+                MERGE (p:Policlinico {nombre: $policlinico})
                 MERGE (c)-[:PERTENECE_A]->(p)
                 """,
                 {
-                "nombre": cmf_nombre,
-                "policlinico": policlinico
+                    "cmf_nombre": cmf_nombre,
+                    "policlinico": policlinico
                 }
             )
-            queries_executed += 1
-
        # 3. Crear conceptos y registros
             for cmf_nombre, valor in concepto.get("registros", {}).items():
     
