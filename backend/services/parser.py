@@ -113,12 +113,12 @@ def parse_and_insert_consolidado(file_path, documento_nombre=None):
         return True
 
     except Exception as e:
-    import traceback
+           import traceback
 
-    print("========== ERROR PARSEANDO EXCEL ==========")
-    print(f"Tipo de error: {type(e).__name__}")
-    print(f"Mensaje: {e}")
-    traceback.print_exc()
-    print("===========================================")
+           print("========== ERROR PARSEANDO EXCEL ==========")
+           print(f"Tipo de error: {type(e).__name__}")
+           print(f"Mensaje: {e}")
+           traceback.print_exc()
+           print("===========================================")
 
-    return False
+           return False
