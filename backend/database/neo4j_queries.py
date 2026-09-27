@@ -63,6 +63,42 @@ def search_by_cmf(cmf, limit=100):
 
     return [record.data() for record in result.records]
 
+def search_by_cmf_and_concept(cmf, concepto, limit=100):
+    """
+    Busca registros de un CMF y un concepto específico.
+    La coincidencia del concepto es parcial y no distingue
+    entre mayúsculas y minúsculas.
+    """
+
+    query = """
+    MATCH (r:Registro)-[:REGISTRADO_EN]->(cmf_node:CMF)
+    MATCH (r)-[:CORRESPONDE_A]->(con:Concepto)
+    MATCH (cmf_node)-[:PERTENECE_A]->(p:Policlinico)
+
+    WHERE toLower(cmf_node.nombre) = toLower($cmf)
+      AND toLower(con.nombre) CONTAINS toLower($concepto)
+
+    RETURN
+        p.nombre AS policlinico,
+        cmf_node.nombre AS cmf,
+        con.nombre AS concepto,
+        con.tipo AS tipo,
+        r.valor AS valor
+
+    ORDER BY con.nombre
+    LIMIT $limit
+    """
+
+    result = neo4j_connection.execute_query(
+        query,
+        {
+            "cmf": cmf,
+            "concepto": concepto,
+            "limit": limit
+        }
+    )
+
+    return [record.data() for record in result.records]
 
 def search_by_concept(concepto, limit=100):
     """
