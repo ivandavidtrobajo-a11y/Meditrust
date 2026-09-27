@@ -3,9 +3,9 @@ import re
 from database.neo4j_queries import (
     get_all_medical_data,
     search_by_cmf,
+    search_by_cmf_and_concept,
     search_by_concept,
-)
-
+    )
 
 def extract_cmf(question):
     """
@@ -71,20 +71,16 @@ def select_medical_data(question):
 
     # Caso 1: CMF + concepto
     if cmf and concepto:
-        data = search_by_cmf(cmf)
-
-        filtered_data = [
-            item
-            for item in data
-            if concepto.lower() in item["concepto"].lower()
-        ]
-
+        data = search_by_cmf_and_concept(
+            cmf,
+            concepto
+        )
+    
         return {
             "cmf": cmf,
             "concepto": concepto,
-            "data": filtered_data,
+            "data": data,
         }
-
     # Caso 2: solo CMF
     if cmf:
         return {
