@@ -457,30 +457,141 @@ def dashboard_data():
     }]
 
     return dashboard
+#_____generar contexto de neo4j_____
+def _generar_contexto_neo4j(resultado: dict, question: str) -> str:
+    """
+    Convierte los resultados obtenidos desde Neo4j
+    en un contexto compacto para el LLM.
+    """
 
+    cmf = resultado.get("cmf")
+    concepto = resultado.get("concepto")
+    data = resultado.get("data", [])
+
+    lines = []
+
+    lines.append("--- DATOS MÉDICOS OBTENIDOS DESDE NEO4J ---")
+    lines.append(f"Pregunta: {question}")
+
+    if cmf:
+        lines.append(f"CMF solicitado: {cmf}")
+
+    if concepto:
+        lines.append(f"Concepto solicitado: {concepto}")
+
+    lines.append("")
+
+    if not data:
+        lines.append(
+            "No se encontraron registros médicos en Neo4j "
+            "que coincidan con la consulta."
+        )
+    else:
+        lines.append(f"Registros encontrados: {len(data)}")
+        lines.append("")
+
+        for i, item in enumerate(data, start=1):
+            lines.append(f"Registro {i}:")
+            lines.append(f"  Policlínico: {item.get('policlinico', 'S/D')}")
+            lines.append(f"  CMF: {item.get('cmf', 'S/D')}")
+            lines.append(f"  Concepto: {item.get('concepto', 'S/D')}")
+            lines.append(f"  Tipo: {item.get('tipo', 'S/D')}")
+            lines.append(f"  Valor: {item.get('valor', 'S/D')}")
+            lines.append("")
+
+    lines.append(
+        "IMPORTANTE: utiliza los datos proporcionados por Neo4j "
+        "como fuente de información. No inventes valores que no "
+        "aparezcan en los registros."
+    )
+
+    lines.append("--- FIN DE DATOS DE NEO4J ---")
+
+    return "\n".join(lines)
 
 # ── LLM question processing ──────────────────────────
 
 def _process_question_task(task_id: str, question: str, model: str = None):
     TASKS[task_id]["status"] = "running"
-    try:
-        ds = get_latest_dataset()
-        contexto = ds.get("contexto", "") if ds else "No hay datos cargados en la base de datos."
 
-        prompt_text = build_prompt(question, contexto=contexto)
+    try:
+        # =====================================================
+        # 1. Consultar Neo4j
+        # =====================================================
+
+        resultado_neo4j = select_medical_data(question)
+
+        logging.info(
+            "Consulta Neo4j completada | pregunta=%s | cmf=%s | "
+            "concepto=%s | registros=%d",
+            question,
+            resultado_neo4j.get("cmf"),
+            resultado_neo4j.get("concepto"),
+            len(resultado_neo4j.get("data", []))
+        )
+
+        # =====================================================
+        # 2. Convertir los resultados de Neo4j en contexto
+        # =====================================================
+
+        contexto = _generar_contexto_neo4j(
+            resultado_neo4j,
+            question
+        )
+
+        # =====================================================
+        # 3. Construir prompt
+        # =====================================================
+
+        prompt_text = build_prompt(
+            question,
+            contexto=contexto
+        )
+
+        # =====================================================
+        # 4. Consultar modelo de lenguaje
+        # =====================================================
+
         effective_model = model or llm_service.get_default_model()
 
         respuesta = llm_service.chat(
             effective_model,
-            messages=[{"role": "user", "content": prompt_text}]
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt_text
+                }
+            ]
         )
 
-        answer_text = respuesta.get("message", {}).get("content", str(respuesta))
+        # =====================================================
+        # 5. Extraer respuesta
+        # =====================================================
+
+        answer_text = respuesta.get(
+            "message",
+            {}
+        ).get(
+            "content",
+            str(respuesta)
+        )
+
+        # =====================================================
+        # 6. Guardar resultado
+        # =====================================================
 
         TASKS[task_id]["status"] = "finished"
         TASKS[task_id]["answer"] = answer_text
 
+        logging.info(
+            "Pregunta procesada correctamente: %s",
+            task_id
+        )
+
     except Exception as e:
-        logging.exception(f"Error procesando pregunta {task_id}: {e}")
+        logging.exception(
+            f"Error procesando pregunta {task_id}: {e}"
+        )
+
         TASKS[task_id]["status"] = "error"
         TASKS[task_id]["error"] = str(e)
