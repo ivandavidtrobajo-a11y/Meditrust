@@ -18,7 +18,7 @@ def get_all_medical_data(limit=100):
         con.tipo AS tipo,
         r.valor AS valor
 
-    ORDER BY cmf.nombre, concepto.nombre
+    ORDER BY cmf.nombre, con.nombre
     LIMIT $limit
     """
 
