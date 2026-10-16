@@ -45,17 +45,19 @@ if frontend_build.exists():
 
 security = HTTPBearer()
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://medicconsult-frontend.onrender.com",
+        "https://memedicconsult-frontend.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 UPLOAD_DIR = os.path.join(os.getcwd(), "uploads")
