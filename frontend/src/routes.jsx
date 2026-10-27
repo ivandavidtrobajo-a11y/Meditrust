@@ -6,6 +6,7 @@ import Medistrust from "layouts/Medistrust";
 
 
 import Smartwatch from "layouts/smartwatch";
+import PatientCapture from "layouts/patient-capture";
 import SignIn from "layouts/authentication/sign-in";
 import SignUp from "layouts/authentication/sign-up";
 
@@ -37,6 +38,14 @@ const routes = [
     component: <Medistrust />,
   },
 
+{
+  type: "collapse",
+  name: "Captura de pacientes",
+  key: "patient-capture",
+  icon: <Icon fontSize="small">cloud_upload</Icon>,
+  route: "/patient-capture",
+  component: <PatientCapture />,
+},
 {
   type: "collapse",
   name: "Smartwatch",

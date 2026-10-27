@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -24,6 +24,10 @@ from services.email_service import send_reset_email
 import secrets
 import pandas as pd
 from pathlib import Path
+from datetime import datetime, timezone
+from io import BytesIO
+from gridfs import GridFSBucket
+from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
@@ -36,23 +40,24 @@ except Exception as e:
     logging.error(f"Error inicializando Neo4j: {e}")
 
 app = FastAPI()
-# Serve frontend static files in production (only if build exists)
-frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
-if frontend_build.exists():
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
-    logging.info("Frontend static files mounted from %s", frontend_build)
 
 security = HTTPBearer()
 
 
+cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://memedicconsult-frontend.onrender.com",
+]
+cors_origins.extend(
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://memedicconsult-frontend.onrender.com",
-    ],
+    allow_origins=list(dict.fromkeys(cors_origins)),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,11 +72,18 @@ TASKS = {}
 
 llm_service = LLMService()
 
-# Seed admin user on startup
+# Optional admin bootstrap. Never commit default credentials.
 db = get_db()
-if not db.users.find_one({"email": "admin@jsonapi.com"}):
-    create_user("Carlo", "admin@jsonapi.com", "12345678", role="admin")
-    logging.info("Admin user seeded: admin@jsonapi.com / 12345678")
+bootstrap_email = os.getenv("BOOTSTRAP_ADMIN_EMAIL", "").strip()
+bootstrap_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
+if bootstrap_email and bootstrap_password and not db.users.find_one({"email": bootstrap_email}):
+    create_user(
+        os.getenv("BOOTSTRAP_ADMIN_NAME", "Administrador"),
+        bootstrap_email,
+        bootstrap_password,
+        role="admin",
+    )
+    logging.info("Bootstrap administrator created from environment configuration.")
 
 
 class QuestionRequest(BaseModel):
@@ -273,6 +285,128 @@ def password_reset(request: AuthRequest):
 @app.get("/")
 def root():
     return {"status": "API funcionando"}
+
+
+
+
+@app.get("/health")
+def health_check():
+    """Comprobación básica del proceso API; no sustituye una prueba de conexión a cada servicio."""
+    return {"status": "ok", "service": "meditrust-api"}
+
+
+@app.post("/patient-captures/")
+async def upload_patient_captures(
+    patient_id: str = Form(...),
+    patient_name: str = Form(""),
+    notes: str = Form(""),
+    files: list[UploadFile] = File(...),
+    current_user=Depends(get_current_user),
+):
+    """Guarda imágenes de prueba en MongoDB GridFS y metadatos asociados al paciente."""
+    patient_id = patient_id.strip()
+    patient_name = patient_name.strip()[:120]
+    notes = notes.strip()[:1000]
+
+    if not patient_id or len(patient_id) > 100:
+        raise HTTPException(status_code=400, detail="El identificador del paciente es obligatorio y debe tener como máximo 100 caracteres.")
+    if not files or len(files) > 5:
+        raise HTTPException(status_code=400, detail="Selecciona entre 1 y 5 imágenes por envío.")
+
+    max_bytes = 8 * 1024 * 1024
+    allowed_formats = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
+    validated = []
+
+    # Validar todos los archivos antes de persistir ninguno.
+    for upload in files:
+        content = await upload.read(max_bytes + 1)
+        if not content:
+            raise HTTPException(status_code=400, detail="Uno de los archivos está vacío.")
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail="Cada imagen debe pesar como máximo 8 MB.")
+
+        try:
+            with Image.open(BytesIO(content)) as image:
+                image_format = image.format
+                image.verify()
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+            raise HTTPException(status_code=415, detail="Uno de los archivos no es una imagen válida.")
+
+        if image_format not in allowed_formats:
+            raise HTTPException(status_code=415, detail="Solo se aceptan imágenes JPEG, PNG o WEBP.")
+
+        validated.append({
+            "content": content,
+            "filename": Path(upload.filename or "captura").name[:180],
+            "content_type": allowed_formats[image_format],
+            "size": len(content),
+        })
+
+    database = get_db()
+    bucket = GridFSBucket(database, bucket_name="patient_capture_images")
+    records = database["patient_capture_records"]
+    uploaded_at = datetime.now(timezone.utc)
+    user_id = str(current_user.get("_id", current_user.get("id", "")))
+    stored = []
+
+    try:
+        for item in validated:
+            storage_name = f"{uuid.uuid4().hex}_{item['filename']}"
+            gridfs_id = bucket.upload_from_stream(
+                storage_name,
+                item["content"],
+                metadata={
+                    "patient_id": patient_id,
+                    "original_filename": item["filename"],
+                    "content_type": item["content_type"],
+                    "uploaded_by": user_id,
+                    "uploaded_at": uploaded_at,
+                },
+            )
+            record = {
+                "gridfs_id": str(gridfs_id),
+                "patient_id": patient_id,
+                "patient_name": patient_name,
+                "original_filename": item["filename"],
+                "content_type": item["content_type"],
+                "size_bytes": item["size"],
+                "notes": notes,
+                "uploaded_by": user_id,
+                "uploaded_at": uploaded_at,
+            }
+            records.insert_one(record)
+            stored.append({
+                "id": str(gridfs_id),
+                "patient_id": patient_id,
+                "filename": item["filename"],
+                "content_type": item["content_type"],
+                "size_bytes": item["size"],
+                "uploaded_at": uploaded_at.isoformat(),
+            })
+    except Exception:
+        logging.exception("Error guardando capturas de paciente")
+        raise HTTPException(status_code=500, detail="No se pudieron guardar todas las imágenes. Comprueba la conexión con MongoDB.")
+
+    return {"message": f"{len(stored)} imagen(es) guardada(s) correctamente.", "captures": stored}
+
+
+@app.get("/patient-captures/{patient_id}")
+def list_patient_captures(patient_id: str, current_user=Depends(get_current_user)):
+    """Lista metadatos de las capturas subidas por el usuario autenticado para ese paciente."""
+    user_id = str(current_user.get("_id", current_user.get("id", "")))
+    records = get_db()["patient_capture_records"]
+    captures = list(
+        records.find(
+            {"patient_id": patient_id, "uploaded_by": user_id},
+            {"_id": 0, "gridfs_id": 1, "patient_id": 1, "patient_name": 1,
+             "original_filename": 1, "content_type": 1, "size_bytes": 1,
+             "notes": 1, "uploaded_at": 1},
+        ).sort("uploaded_at", -1).limit(100)
+    )
+    for item in captures:
+        if item.get("uploaded_at"):
+            item["uploaded_at"] = item["uploaded_at"].isoformat()
+    return {"patient_id": patient_id, "captures": captures}
 
 
 @app.get("/models")
@@ -597,3 +731,11 @@ def _process_question_task(task_id: str, question: str, model: str = None):
 
         TASKS[task_id]["status"] = "error"
         TASKS[task_id]["error"] = str(e)
+
+
+# Mount the frontend only after API routes so it cannot shadow /health or /patient-captures.
+frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
+if frontend_build.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
+    logging.info("Frontend static files mounted from %s", frontend_build)
