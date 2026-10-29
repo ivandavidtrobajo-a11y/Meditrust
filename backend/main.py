@@ -444,8 +444,18 @@ def get_patient_capture_image(
 
     filename = Path(record.get("original_filename") or "captura").name
     safe_filename = filename.replace('"', "").replace("\\", "_").replace("\r", "").replace("\n", "")
+    def iter_gridfs_chunks():
+        try:
+            while True:
+                chunk = stream.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            stream.close()
+
     return StreamingResponse(
-        stream,
+        iter_gridfs_chunks(),
         media_type=record.get("content_type", "application/octet-stream"),
         headers={
             "Content-Disposition": f'inline; filename="{safe_filename}"',
