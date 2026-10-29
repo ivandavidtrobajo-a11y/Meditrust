@@ -1,4 +1,5 @@
 import os
+import logging
 import requests
 import ollama
 
@@ -69,9 +70,32 @@ class HFProvider:
             json=payload,
             timeout=120,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            # Preserve Hugging Face's diagnostic body so the UI/logs reveal
+            # whether the model, provider, or request parameters were rejected.
+            try:
+                error_detail = resp.json()
+            except ValueError:
+                error_detail = resp.text[:1500]
+            logging.error(
+                "Hugging Face chat request failed: status=%s model=%s response=%s",
+                resp.status_code,
+                model_id,
+                error_detail,
+            )
+            raise RuntimeError(
+                f"Hugging Face rechazó la solicitud (HTTP {resp.status_code}) "
+                f"para el modelo '{model_id}': {error_detail}"
+            )
+
         result = resp.json()
-        content = result["choices"][0]["message"]["content"]
+        try:
+            content = result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            logging.error("Respuesta inesperada de Hugging Face: %s", result)
+            raise RuntimeError(
+                f"Hugging Face devolvió una respuesta inesperada para '{model_id}'."
+            ) from exc
         return {"message": {"content": content}}
 
 
