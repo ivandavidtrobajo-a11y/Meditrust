@@ -195,6 +195,7 @@ export default function PatientCapture() {
       setMessage(body.message || "Imágenes enviadas correctamente.");
       setFiles([]);
       setNotes("");
+      await loadHistory();
     } catch (err) {
       setError(err.message || "No se pudo conectar con el backend.");
     } finally {
