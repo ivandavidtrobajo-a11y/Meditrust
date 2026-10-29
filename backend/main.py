@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends, status
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -27,6 +28,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 from io import BytesIO
 from gridfs import GridFSBucket
+from bson import ObjectId
+from bson.errors import InvalidId
 from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
@@ -407,6 +410,49 @@ def list_patient_captures(patient_id: str, current_user=Depends(get_current_user
         if item.get("uploaded_at"):
             item["uploaded_at"] = item["uploaded_at"].isoformat()
     return {"patient_id": patient_id, "captures": captures}
+
+
+@app.get("/patient-captures/{patient_id}/{gridfs_id}/image")
+def get_patient_capture_image(
+    patient_id: str,
+    gridfs_id: str,
+    current_user=Depends(get_current_user),
+):
+    """Devuelve una imagen de GridFS solo si pertenece al usuario autenticado."""
+    user_id = str(current_user.get("_id", current_user.get("id", "")))
+    try:
+        object_id = ObjectId(gridfs_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Captura no encontrada.")
+
+    database = get_db()
+    record = database["patient_capture_records"].find_one({
+        "patient_id": patient_id,
+        "gridfs_id": str(object_id),
+        "uploaded_by": user_id,
+    })
+    if record is None:
+        # No revelar si existe una captura perteneciente a otro usuario.
+        raise HTTPException(status_code=404, detail="Captura no encontrada.")
+
+    bucket = GridFSBucket(database, bucket_name="patient_capture_images")
+    try:
+        stream = bucket.open_download_stream(object_id)
+    except Exception:
+        logging.exception("No se pudo recuperar la imagen de GridFS")
+        raise HTTPException(status_code=404, detail="Archivo de captura no encontrado.")
+
+    filename = Path(record.get("original_filename") or "captura").name
+    safe_filename = filename.replace('"', "").replace("\\", "_").replace("\r", "").replace("\n", "")
+    return StreamingResponse(
+        stream,
+        media_type=record.get("content_type", "application/octet-stream"),
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.get("/models")
