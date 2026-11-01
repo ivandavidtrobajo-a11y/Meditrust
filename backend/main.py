@@ -92,6 +92,12 @@ if bootstrap_email and bootstrap_password and not db.users.find_one({"email": bo
 class QuestionRequest(BaseModel):
     question: str
     model: str = None
+    conversation_id: str
+
+
+class ChatPreferenceRequest(BaseModel):
+    conversation_id: str
+    model: str
 
 
 # ── Auth models ─────────────────────────────────────
@@ -470,16 +476,93 @@ def list_models():
     return llm_service.get_available_models()
 
 
+def _validate_conversation_id(conversation_id: str):
+    value = (conversation_id or "").strip()
+    if len(value) < 8 or len(value) > 128:
+        raise HTTPException(status_code=400, detail="Identificador de conversación inválido")
+    return value
+
+
+@app.get("/chat/preferences/{conversation_id}")
+def get_chat_preferences(
+    conversation_id: str,
+    current_user=Depends(get_current_user),
+):
+    conversation_id = _validate_conversation_id(conversation_id)
+    user_id = str(current_user["_id"])
+    preference = get_db()["chat_preferences"].find_one(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        {"_id": 0, "model": 1},
+    )
+    model = preference.get("model") if preference else None
+    if model and not llm_service.is_model_available(model):
+        model = None
+    return {"conversation_id": conversation_id, "model": model}
+
+
+@app.put("/chat/preferences")
+def save_chat_preferences(
+    request: ChatPreferenceRequest,
+    current_user=Depends(get_current_user),
+):
+    conversation_id = _validate_conversation_id(request.conversation_id)
+    model = (request.model or "").strip()
+    if not llm_service.is_model_available(model):
+        raise HTTPException(status_code=400, detail="El modelo seleccionado no está disponible o no está configurado")
+
+    user_id = str(current_user["_id"])
+    get_db()["chat_preferences"].update_one(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        {"$set": {
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "model": model,
+            "updated_at": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
+    return {"saved": True, "conversation_id": conversation_id, "model": model}
+
+
 @app.post("/ask/")
-async def ask_question(request: QuestionRequest):
+async def ask_question(
+    request: QuestionRequest,
+    current_user=Depends(get_current_user),
+):
     question = request.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Pregunta vacía")
 
-    model = request.model or llm_service.get_default_model()
+    conversation_id = _validate_conversation_id(request.conversation_id)
+    user_id = str(current_user["_id"])
+    preferences = get_db()["chat_preferences"]
+    preference = preferences.find_one(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        {"_id": 0, "model": 1},
+    )
+    model = request.model or (preference or {}).get("model") or llm_service.get_default_model()
+    if not llm_service.is_model_available(model):
+        raise HTTPException(status_code=400, detail="El modelo seleccionado no está disponible o no está configurado")
+
+    preferences.update_one(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        {"$set": {
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "model": model,
+            "updated_at": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
 
     task_id = str(uuid.uuid4())
-    TASKS[task_id] = {"status": "pending", "answer": None, "error": None}
+    TASKS[task_id] = {
+        "status": "pending",
+        "answer": None,
+        "error": None,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+    }
 
     thread = threading.Thread(
         target=_process_question_task,
@@ -492,9 +575,9 @@ async def ask_question(request: QuestionRequest):
 
 
 @app.get("/result/{task_id}")
-async def get_result(task_id: str):
+async def get_result(task_id: str, current_user=Depends(get_current_user)):
     task = TASKS.get(task_id)
-    if not task:
+    if not task or task.get("user_id") != str(current_user["_id"]):
         return {"status": "not_found"}
     return {
         "status": task["status"],
@@ -504,9 +587,9 @@ async def get_result(task_id: str):
 
 
 @app.post("/cancel/{task_id}")
-async def cancel_task(task_id: str):
+async def cancel_task(task_id: str, current_user=Depends(get_current_user)):
     task = TASKS.get(task_id)
-    if not task:
+    if not task or task.get("user_id") != str(current_user["_id"]):
         return {"status": "not_found", "message": "La tarea no existe o ya finalizó"}
     if task["status"] == "running" or task["status"] == "pending":
         task["status"] = "cancelled"
