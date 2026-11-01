@@ -196,7 +196,7 @@ class LLMService:
         return models
 
     def is_model_available(self, model_id):
-        return any(
+        return model_id == self.get_default_model() or any(
             model["id"] == model_id
             for provider_models in self.get_available_models().values()
             for model in provider_models
@@ -219,6 +219,11 @@ class LLMService:
         for m in self.get_available_models()["gemini"]:
             if m["id"] == model_id:
                 return "gemini"
+        # Permite conservar modelos predeterminados personalizados configurados por entorno.
+        if model_id == self.get_default_model():
+            if model_id.startswith("gemini-") and self.gemini.api_key:
+                return "gemini"
+            return "hf" if "/" in model_id else "ollama"
         raise ValueError(f"Modelo no disponible o no configurado: {model_id}")
 
     def chat(self, model_id, messages):
