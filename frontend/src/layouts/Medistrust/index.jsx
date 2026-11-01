@@ -20,6 +20,21 @@ import "ldrs/react/Mirage.css";
 function Medistrust() {
   const [controller, dispatch] = useMaterialUIController();
   const navigate = useNavigate();
+  const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
+  const authHeaders = () => ({
+    Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+  });
+  const [conversationId, setConversationId] = useState(() => {
+    let id = localStorage.getItem("activeChatConversationId");
+    if (!id) {
+      id = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `conversation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("activeChatConversationId", id);
+    }
+    return id;
+  });
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -33,39 +48,75 @@ function Medistrust() {
   const isSendingRef = useRef(false);
   const processedTasksRef = useRef(new Set());
 
-  // Model selector
-  const [models, setModels] = useState({ hf: [], ollama: [] });
-  const [selectedModel, setSelectedModel] = useState(() => {
-    return localStorage.getItem("selectedModel") || "";
-  });
+  // Modelos disponibles y preferencia guardada por usuario/conversación.
+  const [models, setModels] = useState({ hf: [], ollama: [], gemini: [] });
+  const [selectedModel, setSelectedModel] = useState("");
 
-  // Fetch available models on mount
   useEffect(() => {
-    fetch(`${API_BASE}/models`)
-      .then((r) => r.json())
-      .then((data) => {
-        setModels(data);
-        if (!localStorage.getItem("selectedModel")) {
-          const allModels = [...(data.hf || []), ...(data.ollama || [])];
-          if (allModels.length > 0) {
-            setSelectedModel(allModels[0].id);
-          }
+    let cancelled = false;
+
+    const loadModelsAndPreference = async () => {
+      try {
+        const [modelsResponse, preferenceResponse] = await Promise.all([
+          fetch(`${API_BASE}/models`),
+          fetch(`${API_BASE}/chat/preferences/${encodeURIComponent(conversationId)}`, {
+            headers: authHeaders(),
+          }),
+        ]);
+
+        const availableModels = modelsResponse.ok
+          ? await modelsResponse.json()
+          : { hf: [], ollama: [], gemini: [] };
+        const preference = preferenceResponse.ok
+          ? await preferenceResponse.json()
+          : {};
+
+        if (cancelled) return;
+
+        setModels(availableModels);
+        const allModels = [
+          ...(availableModels.hf || []),
+          ...(availableModels.ollama || []),
+          ...(availableModels.gemini || []),
+        ];
+        const savedModel = allModels.find((item) => item.id === preference.model);
+        setSelectedModel(savedModel ? savedModel.id : (allModels[0]?.id || ""));
+        setPreferencesLoaded(true);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("No se pudieron cargar los modelos o la preferencia de conversación", error);
+          setPreferencesLoaded(true);
         }
-      })
-      .catch(() => console.warn("No se pudo obtener lista de modelos"));
-  }, []);
+      }
+    };
 
-  // Persist selected model
+    setPreferencesLoaded(false);
+    loadModelsAndPreference();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  // Persistir la selección en MongoDB asociada al usuario autenticado y a esta conversación.
   useEffect(() => {
-    if (selectedModel) localStorage.setItem("selectedModel", selectedModel);
-  }, [selectedModel]);
+    if (!preferencesLoaded || !selectedModel) return;
+
+    fetch(`${API_BASE}/chat/preferences`, {
+      method: "PUT",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ conversation_id: conversationId, model: selectedModel }),
+    }).then((response) => {
+      if (!response.ok) console.warn("No se pudo guardar el modelo de esta conversación");
+    }).catch((error) => console.warn("Error guardando la preferencia del modelo", error));
+  }, [conversationId, selectedModel, preferencesLoaded]);
 
   // Documents panel
   const [documents, setDocuments] = useState([]);
   const [showSidebar, setShowSidebar] = useState(false);
   const [docSearch, setDocSearch] = useState("");
-
-  const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
 
   // Layout: full screen (hide menu) while component is mounted
   useEffect(() => {
@@ -114,8 +165,15 @@ const handleSend = async () => {
     // Paso 1: iniciar tarea
     const resp = await fetch(`${API_BASE}/ask/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: userQuestion, model: selectedModel || undefined }),
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question: userQuestion,
+        model: selectedModel || undefined,
+        conversation_id: conversationId,
+      }),
     });
 
     if (!resp.ok) {
@@ -145,7 +203,9 @@ const handleSend = async () => {
     // Paso 2: iniciar polling
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const r = await fetch(`${API_BASE}/result/${taskId}`);
+        const r = await fetch(`${API_BASE}/result/${taskId}`, {
+          headers: authHeaders(),
+        });
         const task = await r.json();
 
         if (task.status === "finished" && !processedTasksRef.current.has(taskId)) {
@@ -206,7 +266,10 @@ const handleStopIA = async () => {
   }
 
   try {
-    const resp = await fetch(`${API_BASE}/cancel/${currentTaskId}`, { method: "POST" });
+    const resp = await fetch(`${API_BASE}/cancel/${currentTaskId}`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
     if (resp.ok) {
       setMessages((prev) => [...prev, { text: "Consulta detenida.", sender: "system" }]);
     } else {
@@ -300,6 +363,14 @@ const handleStopIA = async () => {
     setMessages([]);
     setHistory([]);
     localStorage.removeItem("chatHistory");
+
+    const nextConversationId = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `conversation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("activeChatConversationId", nextConversationId);
+    setSelectedModel("");
+    setPreferencesLoaded(false);
+    setConversationId(nextConversationId);
   };
 
   return (
@@ -321,7 +392,9 @@ const handleStopIA = async () => {
           <Card sx={{ p: 3, height: "85vh", overflowY: "auto" }}>
             <MDBox display="flex" justifyContent="space-between" mb={2}>
               <MDTypography variant="h6" color="info">Historial</MDTypography>
-              <Button color="error" onClick={handleClearHistory}><Icon>delete</Icon></Button>
+              <Button color="info" title="Nueva conversación" onClick={handleClearHistory}>
+                <Icon>add_comment</Icon>
+              </Button>
             </MDBox>
 
             <TextField
@@ -374,6 +447,16 @@ const handleStopIA = async () => {
                     </MenuItem>
                   )}
                   {models.ollama.map((m) => (
+                    <MenuItem key={m.id} value={m.id}>
+                      {m.name} — {m.size} ({m.description})
+                    </MenuItem>
+                  ))}
+                  {models.gemini.length > 0 && (
+                    <MenuItem disabled sx={{ fontWeight: "bold", opacity: 0.7, mt: 1 }}>
+                      ─ Gemini API (online) ─
+                    </MenuItem>
+                  )}
+                  {models.gemini.map((m) => (
                     <MenuItem key={m.id} value={m.id}>
                       {m.name} — {m.size} ({m.description})
                     </MenuItem>
