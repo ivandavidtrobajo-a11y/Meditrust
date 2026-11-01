@@ -43,3 +43,17 @@ Flujo:
 - database/
   - mongodb.py - Conexión a MongoDB
   - datasets_db.py - CRUD de datasets médicos
+
+---
+
+## Proveedores de modelos de lenguaje
+
+El backend admite tres proveedores mediante una interfaz común:
+
+- **Ollama:** ejecución local.
+- **Hugging Face:** inferencia online.
+- **Gemini API:** inferencia online opcional, habilitada al configurar `GEMINI_API_KEY` en el entorno del backend.
+
+La preferencia del modelo se almacena por usuario y conversación en MongoDB. El backend identifica al usuario mediante el JWT y valida que el modelo solicitado esté disponible. La clave de Gemini nunca debe enviarse al frontend.
+
+Consulta [GEMINI_SETUP.md](./GEMINI_SETUP.md) para configurar la clave, desplegar y probar la integración. Para las pruebas cloud, utiliza datos sintéticos o anonimizados.
