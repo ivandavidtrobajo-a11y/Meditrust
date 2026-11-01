@@ -77,6 +77,15 @@ llm_service = LLMService()
 
 # Optional admin bootstrap. Never commit default credentials.
 db = get_db()
+try:
+    db["chat_preferences"].create_index(
+        [("user_id", 1), ("conversation_id", 1)],
+        unique=True,
+        name="unique_user_conversation_model",
+    )
+except Exception:
+    logging.exception("No se pudo crear el índice de preferencias del chat")
+
 bootstrap_email = os.getenv("BOOTSTRAP_ADMIN_EMAIL", "").strip()
 bootstrap_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
 if bootstrap_email and bootstrap_password and not db.users.find_one({"email": bootstrap_email}):
