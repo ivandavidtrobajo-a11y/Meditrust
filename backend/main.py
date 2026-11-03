@@ -8,6 +8,7 @@ import logging
 import uuid
 import threading
 import re
+import unicodedata
 import json
 
 from services.parser import parse_and_insert_consolidado
@@ -793,44 +794,70 @@ def _generar_contexto_neo4j(resultado: dict, question: str) -> str:
 
     return "\n".join(lines)
 
+def _is_simple_greeting(question: str) -> bool:
+    """Identifica saludos aislados sin confundirlos con preguntas que los acompañan."""
+    normalized = unicodedata.normalize("NFKD", (question or "").strip().lower())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = " ".join(normalized.split())
+
+    greetings = {
+        "hola", "hola hola", "hey", "hi", "hello", "saludos",
+        "buen dia", "buenos dias", "buenas tardes", "buenas noches",
+        "que tal", "como estas", "como esta", "que hubo",
+    }
+    return normalized in greetings
+
+
 # ── LLM question processing ──────────────────────────
 
 def _process_question_task(task_id: str, question: str, model: str = None):
     TASKS[task_id]["status"] = "running"
 
     try:
-        # =====================================================
-        # 1. Consultar Neo4j
-        # =====================================================
+        # Los saludos simples no necesitan consultar Neo4j ni construir
+        # el contexto médico completo. Se envían al modelo seleccionado
+        # como una interacción conversacional breve.
+        if _is_simple_greeting(question):
+            prompt_text = (
+                "Responde como un asistente conversacional en español. "
+                "El usuario te está saludando. Contesta de forma breve, "
+                "natural y profesional, e invítalo a realizar una consulta."
+            )
+            logging.info("Saludo simple detectado; se omite la consulta a Neo4j.")
+        else:
+            # =====================================================
+            # 1. Consultar Neo4j
+            # =====================================================
 
-        resultado_neo4j = select_medical_data(question)
+            resultado_neo4j = select_medical_data(question)
 
-        logging.info(
-            "Consulta Neo4j completada | pregunta=%s | cmf=%s | "
-            "concepto=%s | registros=%d",
-            question,
-            resultado_neo4j.get("cmf"),
-            resultado_neo4j.get("concepto"),
-            len(resultado_neo4j.get("data", []))
-        )
+            logging.info(
+                "Consulta Neo4j completada | pregunta=%s | cmf=%s | "
+                "concepto=%s | registros=%d",
+                question,
+                resultado_neo4j.get("cmf"),
+                resultado_neo4j.get("concepto"),
+                len(resultado_neo4j.get("data", []))
+            )
 
-        # =====================================================
-        # 2. Convertir los resultados de Neo4j en contexto
-        # =====================================================
+            # =====================================================
+            # 2. Convertir los resultados de Neo4j en contexto
+            # =====================================================
 
-        contexto = _generar_contexto_neo4j(
-            resultado_neo4j,
-            question
-        )
+            contexto = _generar_contexto_neo4j(
+                resultado_neo4j,
+                question
+            )
 
-        # =====================================================
-        # 3. Construir prompt
-        # =====================================================
+            # =====================================================
+            # 3. Construir prompt médico
+            # =====================================================
 
-        prompt_text = build_prompt(
-            question,
-            contexto=contexto
-        )
+            prompt_text = build_prompt(
+                question,
+                contexto=contexto
+            )
 
         # =====================================================
         # 4. Consultar modelo de lenguaje
