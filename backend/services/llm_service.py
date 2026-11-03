@@ -47,8 +47,8 @@ OLLAMA_MODELS = [
 
 GEMINI_MODELS = [
     {
-        "id": os.getenv("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash"),
-        "name": "Gemini 2.5 Flash",
+        "id": os.getenv("GEMINI_DEFAULT_MODEL", "gemini-3.8-flash"),
+        "name": "Gemini Flash",
         "provider": "gemini",
         "size": "Cloud",
         "description": "Modelo de Google mediante Gemini API",
@@ -117,6 +117,9 @@ class OllamaProvider:
 
 class GeminiProvider:
 
+    RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+    MAX_ATTEMPTS = 3
+
     def __init__(self, api_key=None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
         self.api_url = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -148,38 +151,75 @@ class GeminiProvider:
         if system_instruction:
             payload["systemInstruction"] = system_instruction
 
-        response = requests.post(
-            f"{self.api_url}/{model_id}:generateContent",
-            headers={
-                "x-goog-api-key": self.api_key,
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=120,
-        )
-        if not response.ok:
+        url = f"{self.api_url}/{model_id}:generateContent"
+        for attempt in range(self.MAX_ATTEMPTS):
             try:
-                detail = response.json()
-            except ValueError:
-                detail = response.text[:1500]
-            logging.error(
-                "Gemini chat request failed: status=%s model=%s response=%s",
-                response.status_code, model_id, detail,
-            )
-            raise RuntimeError(
-                f"Gemini rechazó la solicitud (HTTP {response.status_code}) "
-                f"para el modelo '{model_id}': {detail}"
-            )
+                response = requests.post(
+                    url,
+                    headers={
+                        "x-goog-api-key": self.api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=(15, 90),
+                )
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+                logging.warning(
+                    "Gemini connection attempt %s/%s failed for model %s: %s",
+                    attempt + 1, self.MAX_ATTEMPTS, model_id, exc,
+                )
+                if attempt + 1 >= self.MAX_ATTEMPTS:
+                    raise RuntimeError(
+                        f"Gemini no respondió después de {self.MAX_ATTEMPTS} intentos. "
+                        "La conexión agotó el tiempo de espera. Inténtalo de nuevo más tarde."
+                    ) from exc
+                import time
+                time.sleep(2 ** attempt)
+                continue
 
-        result = response.json()
-        try:
-            parts = result["candidates"][0]["content"]["parts"]
-            content = "".join(part.get("text", "") for part in parts)
-        except (KeyError, IndexError, TypeError) as exc:
-            logging.error("Respuesta inesperada de Gemini: %s", result)
-            raise RuntimeError(f"Gemini devolvió una respuesta inesperada para '{model_id}'.") from exc
+            if response.status_code in self.RETRYABLE_STATUS_CODES:
+                try:
+                    detail = response.json()
+                except ValueError:
+                    detail = response.text[:1500]
+                logging.warning(
+                    "Gemini temporal error: status=%s model=%s attempt=%s/%s response=%s",
+                    response.status_code, model_id, attempt + 1, self.MAX_ATTEMPTS, detail,
+                )
+                if attempt + 1 >= self.MAX_ATTEMPTS:
+                    raise RuntimeError(
+                        f"Gemini no está disponible temporalmente (HTTP {response.status_code}) "
+                        f"después de {self.MAX_ATTEMPTS} intentos: {detail}"
+                    )
+                import time
+                time.sleep(2 ** attempt)
+                continue
 
-        return {"message": {"content": content}}
+            if not response.ok:
+                try:
+                    detail = response.json()
+                except ValueError:
+                    detail = response.text[:1500]
+                logging.error(
+                    "Gemini chat request failed: status=%s model=%s response=%s",
+                    response.status_code, model_id, detail,
+                )
+                raise RuntimeError(
+                    f"Gemini rechazó la solicitud (HTTP {response.status_code}) "
+                    f"para el modelo '{model_id}': {detail}"
+                )
+
+            result = response.json()
+            try:
+                parts = result["candidates"][0]["content"]["parts"]
+                content = "".join(part.get("text", "") for part in parts)
+            except (KeyError, IndexError, TypeError) as exc:
+                logging.error("Respuesta inesperada de Gemini: %s", result)
+                raise RuntimeError(f"Gemini devolvió una respuesta inesperada para '{model_id}'.") from exc
+
+            return {"message": {"content": content}}
+
+        raise RuntimeError("Gemini no pudo completar la solicitud.")
 
 
 class LLMService:
