@@ -37,8 +37,8 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false);
 
   const [inputs, setInputs] = useState({
-    email: "admin@jsonapi.com",
-    password: "12345678",
+    email: "",
+    password: "",
   });
 
   const [errors, setErrors] = useState({
@@ -85,7 +85,7 @@ function Login() {
 
     try {
       const response = await AuthService.login(myData);
-      authContext.login(response.access_token, response.refresh_token);
+      authContext.login(response.access_token, response.user);
     } catch (res) {
       const message = res?.message || res?.errors?.[0]?.detail || "Error al iniciar sesión. Revisa la consola.";
       setCredentialsError(message);
