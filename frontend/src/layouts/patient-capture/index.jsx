@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { AuthContext } from "context";
 import {
   Alert, Card, CardContent, Chip, CircularProgress, Divider, Grid,
   IconButton, Stack, TextField, Typography, Button,
@@ -16,10 +17,10 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export default function PatientCapture() {
+  const { user } = useContext(AuthContext);
+  const patientId = user?.id || "";
   const inputRef = useRef(null);
   const filesRef = useRef([]);
-  const [patientId, setPatientId] = useState("");
-  const [patientName, setPatientName] = useState("");
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState([]);
   const [message, setMessage] = useState(null);
@@ -83,7 +84,7 @@ export default function PatientCapture() {
   };
 
   const loadHistory = async () => {
-    const id = patientId.trim();
+    const id = patientId;
     setHistoryError("");
     if (!id) {
       setHistoryError("Introduce el identificador del paciente para consultar su historial.");
@@ -159,8 +160,8 @@ export default function PatientCapture() {
     setMessage(null);
     setUploaded([]);
 
-    if (!patientId.trim()) {
-      setError("Introduce un identificador de paciente de prueba.");
+    if (!patientId) {
+      setError("No se pudo identificar tu cuenta. Cierra sesión e inicia sesión de nuevo.");
       return;
     }
     if (!files.length) {
@@ -175,8 +176,8 @@ export default function PatientCapture() {
     }
 
     const formData = new FormData();
-    formData.append("patient_id", patientId.trim());
-    formData.append("patient_name", patientName.trim());
+    formData.append("patient_id", patientId);
+    formData.append("patient_name", user?.name || "");
     formData.append("notes", notes.trim());
     files.forEach((item) => formData.append("files", item.file));
 
@@ -227,23 +228,8 @@ export default function PatientCapture() {
 
                 <form onSubmit={submit}>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="Identificador del paciente (obligatorio)"
-                        value={patientId}
-                        onChange={(e) => setPatientId(e.target.value)}
-                        fullWidth required inputProps={{ maxLength: 100 }}
-                        helperText="Para la prueba utiliza un ID ficticio, por ejemplo PACIENTE-DEMO-001."
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="Nombre o alias (opcional)"
-                        value={patientName}
-                        onChange={(e) => setPatientName(e.target.value)}
-                        fullWidth inputProps={{ maxLength: 120 }}
-                        helperText="Evita introducir datos identificables reales en la demostración."
-                      />
+                    <Grid item xs={12}>
+                      <Alert severity="info">Las capturas se asociarán automáticamente a tu cuenta ({user?.name || user?.email || "usuario autenticado"}).</Alert>
                     </Grid>
                     <Grid item xs={12}>
                       <TextField
