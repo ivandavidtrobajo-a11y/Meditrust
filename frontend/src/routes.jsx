@@ -27,6 +27,7 @@ const routes = [
     key: "dashboard",
     icon: <Icon fontSize="small">dashboard</Icon>,
     route: "/dashboard",
+    allowedRoles: ["admin"],
     component: <Dashboard />,
   },
   {
@@ -35,6 +36,7 @@ const routes = [
     key: "Medistrust",
     icon: <Icon fontSize="small">IA</Icon>,
     route: "/Medistrust",
+    allowedRoles: ["medico"],
     component: <Medistrust />,
   },
 
@@ -44,6 +46,7 @@ const routes = [
   key: "patient-capture",
   icon: <Icon fontSize="small">cloud_upload</Icon>,
   route: "/patient-capture",
+  allowedRoles: ["embarazada"],
   component: <PatientCapture />,
 },
 {
@@ -52,6 +55,7 @@ const routes = [
   key: "smartwatch",
   icon: <Icon fontSize="small">watch</Icon>,
   route: "/smartwatch",
+  allowedRoles: [],
   component: <Smartwatch />,
 },
 
@@ -60,6 +64,7 @@ const routes = [
     name: "Gestionar Usuarios",
     icon: <Icon fontSize="small">list</Icon>,
     route: "/user-management",
+    allowedRoles: ["admin"],
     component: <UserManagement />,
   },
 
