@@ -35,6 +35,7 @@ from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
+from services.authorization import require_role, require_admin, require_patient_access
 
 load_dotenv()
 try:
@@ -153,6 +154,7 @@ def _user_to_json(user) -> dict:
             "attributes": {
                 "name": user.get("name", ""),
                 "email": user.get("email", ""),
+                "role": user.get("role", "embarazada"),
                 "profile_image": user.get("profile_image"),
                 "createdAt": user.get("created_at"),
                 "updateAt": user.get("updated_at"),
@@ -324,7 +326,10 @@ async def upload_patient_captures(
 ):
     """Guarda imágenes de prueba en MongoDB GridFS y metadatos asociados al paciente."""
     patient_id = patient_id.strip()
-    patient_name = patient_name.strip()[:120]
+    require_role(current_user, "embarazada")
+    if patient_id != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="El identificador debe corresponder a tu propia cuenta.")
+    patient_name = str(current_user.get("name", ""))[:120]
     notes = notes.strip()[:1000]
 
     if not patient_id or len(patient_id) > 100:
@@ -411,12 +416,13 @@ async def upload_patient_captures(
 
 @app.get("/patient-captures/{patient_id}")
 def list_patient_captures(patient_id: str, current_user=Depends(get_current_user)):
-    """Lista metadatos de las capturas subidas por el usuario autenticado para ese paciente."""
-    user_id = str(current_user.get("_id", current_user.get("id", "")))
-    records = get_db()["patient_capture_records"]
+    """Lista capturas propias o de un paciente con asignación médica activa."""
+    database = get_db()
+    require_patient_access(current_user, patient_id, database)
+    records = database["patient_capture_records"]
     captures = list(
         records.find(
-            {"patient_id": patient_id, "uploaded_by": user_id},
+            {"patient_id": patient_id},
             {"_id": 0, "gridfs_id": 1, "patient_id": 1, "patient_name": 1,
              "original_filename": 1, "content_type": 1, "size_bytes": 1,
              "notes": 1, "uploaded_at": 1},
@@ -435,17 +441,16 @@ def get_patient_capture_image(
     current_user=Depends(get_current_user),
 ):
     """Devuelve una imagen de GridFS solo si pertenece al usuario autenticado."""
-    user_id = str(current_user.get("_id", current_user.get("id", "")))
+    database = get_db()
+    require_patient_access(current_user, patient_id, database)
     try:
         object_id = ObjectId(gridfs_id)
     except (InvalidId, TypeError):
         raise HTTPException(status_code=404, detail="Captura no encontrada.")
 
-    database = get_db()
     record = database["patient_capture_records"].find_one({
         "patient_id": patient_id,
         "gridfs_id": str(object_id),
-        "uploaded_by": user_id,
     })
     if record is None:
         # No revelar si existe una captura perteneciente a otro usuario.
@@ -482,7 +487,8 @@ def get_patient_capture_image(
 
 
 @app.get("/models")
-def list_models():
+def list_models(current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
     return llm_service.get_available_models()
 
 
@@ -498,6 +504,7 @@ def get_chat_preferences(
     conversation_id: str,
     current_user=Depends(get_current_user),
 ):
+    require_role(current_user, "medico")
     conversation_id = _validate_conversation_id(conversation_id)
     user_id = str(current_user["_id"])
     preference = get_db()["chat_preferences"].find_one(
@@ -515,6 +522,7 @@ def save_chat_preferences(
     request: ChatPreferenceRequest,
     current_user=Depends(get_current_user),
 ):
+    require_role(current_user, "medico")
     conversation_id = _validate_conversation_id(request.conversation_id)
     model = (request.model or "").strip()
     if not llm_service.is_model_available(model):
@@ -539,6 +547,7 @@ async def ask_question(
     request: QuestionRequest,
     current_user=Depends(get_current_user),
 ):
+    require_role(current_user, "medico")
     question = request.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Pregunta vacía")
@@ -586,6 +595,7 @@ async def ask_question(
 
 @app.get("/result/{task_id}")
 async def get_result(task_id: str, current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
     task = TASKS.get(task_id)
     if not task or task.get("user_id") != str(current_user["_id"]):
         return {"status": "not_found"}
@@ -598,6 +608,7 @@ async def get_result(task_id: str, current_user=Depends(get_current_user)):
 
 @app.post("/cancel/{task_id}")
 async def cancel_task(task_id: str, current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
     task = TASKS.get(task_id)
     if not task or task.get("user_id") != str(current_user["_id"]):
         return {"status": "not_found", "message": "La tarea no existe o ya finalizó"}
@@ -609,13 +620,15 @@ async def cancel_task(task_id: str, current_user=Depends(get_current_user)):
 
 
 @app.get("/documents")
-async def list_docs():
+async def list_docs(current_user=Depends(get_current_user)):
+    require_admin(current_user)
     docs = list_document_nodes()
     return {"documentos": docs}
 
 
 @app.delete("/documents/{id}")
-async def delete_doc(id: str):
+async def delete_doc(id: str, current_user=Depends(get_current_user)):
+    require_admin(current_user)
     try:
         deleted = delete_document_node(id)
         if not deleted:
@@ -627,7 +640,8 @@ async def delete_doc(id: str):
 
 
 @app.post("/upload/")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), current_user=Depends(get_current_user)):
+    require_admin(current_user)
     try:
         file_path = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_path, "wb") as f:
@@ -691,7 +705,8 @@ def _generar_contexto(ds: dict, filename: str) -> str:
 
 #_______neo4j_test______________________________________
 @app.get("/neo4j-test")
-def neo4j_test(question: str):
+def neo4j_test(question: str, current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
     try:
         result = select_medical_data(question)
 
@@ -711,7 +726,8 @@ def neo4j_test(question: str):
 # ── Dashboard ────────────────────────────────────────
 
 @app.get("/dashboard")
-def dashboard_data():
+def dashboard_data(current_user=Depends(get_current_user)):
+    require_admin(current_user)
     ds = get_latest_dataset()
     if not ds:
         return {"error": "No hay datos cargados"}
