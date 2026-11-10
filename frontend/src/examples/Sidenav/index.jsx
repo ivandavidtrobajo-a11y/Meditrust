@@ -117,14 +117,18 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
       <Divider light={(!darkMode && !whiteSidenav && !transparentSidenav) ||
         (darkMode && !transparentSidenav && whiteSidenav)} />
       <List sx={{ px: 1, pb: 2 }}>
-        <MDBox display="flex" flexDirection="column" alignItems="stretch">
-          <MDTypography color={textColor} variant="caption" fontWeight="medium" pl="1.5rem" py={1}>
-            Usuarios
-          </MDTypography>
-          {renderExampleRoutes}
-        </MDBox>
-        <Divider sx={{ my: 1 }} light={(!darkMode && !whiteSidenav && !transparentSidenav) ||
-          (darkMode && !transparentSidenav && whiteSidenav)} />
+        {visibleRoutes.some((item) => item.type === "examples") && (
+          <>
+            <MDBox display="flex" flexDirection="column" alignItems="stretch">
+              <MDTypography color={textColor} variant="caption" fontWeight="medium" pl="1.5rem" py={1}>
+                Usuarios
+              </MDTypography>
+              {renderExampleRoutes}
+            </MDBox>
+            <Divider sx={{ my: 1 }} light={(!darkMode && !whiteSidenav && !transparentSidenav) ||
+              (darkMode && !transparentSidenav && whiteSidenav)} />
+          </>
+        )}
         {renderRoutes}
       </List>
     </SidenavRoot>
