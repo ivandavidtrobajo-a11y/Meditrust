@@ -1,17 +1,7 @@
-
-
 import { useEffect } from "react";
-
-// react-router-dom components
 import { useLocation } from "react-router-dom";
-
-// prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
-
-// Material Dashboard 2 React components
 import MDBox from "components/MDBox";
-
-// Material Dashboard 2 React context
 import { useMaterialUIController, setLayout } from "context";
 
 function DashboardLayout({ children }) {
@@ -21,17 +11,23 @@ function DashboardLayout({ children }) {
 
   useEffect(() => {
     setLayout(dispatch, "dashboard");
-  }, [pathname]);
+  }, [pathname, dispatch]);
 
   return (
     <MDBox
       sx={({ breakpoints, transitions, functions: { pxToRem } }) => ({
-        p: 3,
+        width: "100%",
+        minWidth: 0,
+        boxSizing: "border-box",
+        p: { xs: 1.5, sm: 2, md: 3 },
+        pt: { xs: 2, md: 3 },
+        pb: { xs: 3, md: 3 },
         position: "relative",
-
+        overflowX: "clip",
         [breakpoints.up("xl")]: {
           marginLeft: miniSidenav ? pxToRem(120) : pxToRem(274),
-          transition: transitions.create(["margin-left", "margin-right"], {
+          width: miniSidenav ? `calc(100% - ${pxToRem(120)})` : `calc(100% - ${pxToRem(274)})`,
+          transition: transitions.create(["margin-left", "width"], {
             easing: transitions.easing.easeInOut,
             duration: transitions.duration.standard,
           }),
@@ -43,9 +39,5 @@ function DashboardLayout({ children }) {
   );
 }
 
-// Typechecking props for the DashboardLayout
-DashboardLayout.propTypes = {
-  children: PropTypes.node.isRequired,
-};
-
+DashboardLayout.propTypes = { children: PropTypes.node.isRequired };
 export default DashboardLayout;
