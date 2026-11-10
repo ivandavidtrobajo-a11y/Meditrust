@@ -23,7 +23,7 @@ import ForgotPassword from "auth/forgot-password";
 import ResetPassword from "auth/reset-password";
 import Login from "auth/login";
 import Register from "auth/register";
-import { AuthContext } from "context";
+import { AuthContext, getRoleHomePath } from "context";
 import UserProfile from "layouts/user-profile";
 import UserManagement from "layouts/user-management";
 
@@ -76,7 +76,7 @@ export default function App() {
           exact
           path={route.route}
           element={
-            <ProtectedRoute isAuthenticated={authContext.isAuthenticated}>
+            <ProtectedRoute isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user} allowedRoles={route.allowedRoles}>
               {route.component}
             </ProtectedRoute>
           }
@@ -111,7 +111,7 @@ export default function App() {
 
   const applicationShell = (
     <>
-      {layout === "dashboard" && (
+      {layout === "dashboard" && authContext.isAuthenticated && (
         <>
           <Sidenav
             color={sidenavColor}
@@ -141,7 +141,8 @@ export default function App() {
               <Route path="register" element={<Navigate to="/auth/register" />} />
               <Route path="forgot-password" element={<Navigate to="/auth/forgot-password" />} />
               {getRoutes(routes)}
-              <Route path="*" element={<Navigate to="/dashboard" />} />
+              <Route path="/" element={<Navigate to={authContext.isAuthenticated ? getRoleHomePath(authContext.user?.role) : "/auth/login"} replace />} />
+            <Route path="*" element={<Navigate to={authContext.isAuthenticated ? getRoleHomePath(authContext.user?.role) : "/auth/login"} replace />} />
             </Routes>
           </ThemeProvider>
         </CacheProvider>
@@ -154,28 +155,21 @@ export default function App() {
             <Route path="/auth/register" element={<Register />} />
             <Route path="/auth/forgot-password" element={<ForgotPassword />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
+            <Route path="/user-profile" element={<ProtectedRoute isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user}><UserProfile /></ProtectedRoute>} />
             <Route
               exact
-              path="user-profile"
+              path="/user-profile"
               element={
-                <ProtectedRoute isAuthenticated={authContext.isAuthenticated}>
+                <ProtectedRoute isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user}>
                   <UserProfile />
                 </ProtectedRoute>
               }
               key="user-profile"
             />
-            <Route
-              exact
-              path="user-management"
-              element={
-                <ProtectedRoute isAuthenticated={authContext.isAuthenticated}>
-                  <UserManagement />
-                </ProtectedRoute>
-              }
-              key="user-management"
-            />
+
             {getRoutes(routes)}
-            <Route path="*" element={<Navigate to="/auth/login" />} />
+            <Route path="/" element={<Navigate to={authContext.isAuthenticated ? getRoleHomePath(authContext.user?.role) : "/auth/login"} replace />} />
+            <Route path="*" element={<Navigate to={authContext.isAuthenticated ? getRoleHomePath(authContext.user?.role) : "/auth/login"} replace />} />
           </Routes>
         </ThemeProvider>
       )}
