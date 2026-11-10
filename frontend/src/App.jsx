@@ -25,7 +25,6 @@ import Login from "auth/login";
 import Register from "auth/register";
 import { AuthContext, getRoleHomePath } from "context";
 import UserProfile from "layouts/user-profile";
-import UserManagement from "layouts/user-management";
 
 export default function App() {
   const authContext = useContext(AuthContext);
@@ -155,7 +154,6 @@ export default function App() {
             <Route path="/auth/register" element={<Register />} />
             <Route path="/auth/forgot-password" element={<ForgotPassword />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
-            <Route path="/user-profile" element={<ProtectedRoute isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user}><UserProfile /></ProtectedRoute>} />
             <Route
               exact
               path="/user-profile"
