@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useLocation, NavLink } from "react-router-dom";
+import { useContext } from "react";
+import { AuthContext } from "context";
 import PropTypes from "prop-types";
 import List from "@mui/material/List";
 import Divider from "@mui/material/Divider";
@@ -20,6 +22,8 @@ import {
 } from "context";
 
 function Sidenav({ color, brand, brandName, routes, ...rest }) {
+  const authContext = useContext(AuthContext);
+  const visibleRoutes = routes.filter((item) => !item.allowedRoles || item.allowedRoles.includes(authContext.user?.role));
   const [controller, dispatch] = useMaterialUIController();
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode, sidenavColor } = controller;
   const location = useLocation();
@@ -45,7 +49,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     return () => window.removeEventListener("resize", handleMiniSidenav);
   }, [dispatch, location.pathname]);
 
-  const renderRoutes = routes.map(({ type, name, icon, title, noCollapse, key, href, route }) => {
+  const renderRoutes = visibleRoutes.map(({ type, name, icon, title, noCollapse, key, href, route }) => {
     if (type === "collapse") {
       return href ? (
         <Link href={href} key={key} target="_blank" rel="noreferrer" sx={{ textDecoration: "none" }}>
@@ -72,7 +76,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     return null;
   });
 
-  const renderExampleRoutes = routes.map(({ type, name, icon, noCollapse, key, href, route }) => {
+  const renderExampleRoutes = visibleRoutes.map(({ type, name, icon, noCollapse, key, href, route }) => {
     if (type !== "examples") return null;
     return href ? (
       <Link href={href} key={key} target="_blank" rel="noreferrer" sx={{ textDecoration: "none" }}>
