@@ -308,7 +308,7 @@ export default function PatientCapture() {
                   <div>
                     <Typography variant="h6" fontWeight={600}>Historial de capturas</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Consulta los metadatos e imágenes que tu cuenta ha registrado para un paciente.
+                      Consulta los metadatos e imágenes que has registrado desde tu cuenta.
                     </Typography>
                   </div>
                   <Button
@@ -323,7 +323,7 @@ export default function PatientCapture() {
                 {historyError && <Alert severity="error" sx={{ mt: 2 }}>{historyError}</Alert>}
                 {!historyLoading && history.length === 0 && !historyError && (
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                    Introduce un identificador arriba y pulsa «Consultar historial».
+                    Pulsa «Consultar historial» para ver las capturas asociadas a tu cuenta.
                   </Typography>
                 )}
                 {history.length > 0 && (
@@ -382,7 +382,7 @@ export default function PatientCapture() {
                       </Typography>
                     ))}
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                      Las imágenes se guardaron en MongoDB GridFS y los metadatos quedaron asociados al identificador indicado.
+                      Las imágenes se guardaron en MongoDB GridFS y los metadatos quedaron asociados a tu cuenta.
                     </Typography>
                   </Alert>
                 )}
