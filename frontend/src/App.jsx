@@ -35,13 +35,8 @@ export default function App() {
     transparentSidenav, whiteSidenav, darkMode,
   } = controller;
   const [onMouseEnter, setOnMouseEnter] = useState(false);
-  const [rtlCache, setRtlCache] = useState(null);
+  const rtlCache = useMemo(() => createCache({ key: "rtl", stylisPlugins: [rtlPlugin] }), []);
   const { pathname } = useLocation();
-
-  useEffect(() => {
-    const cacheRtl = createCache({ key: "rtl", stylisPlugins: [rtlPlugin] });
-    setRtlCache(cacheRtl);
-  }, []);
 
   const handleOnMouseEnter = () => {
     if (miniSidenav && !onMouseEnter) {

@@ -17,7 +17,7 @@ function navbar(theme, ownerState) {
     minHeight: pxToRem(64),
     display: "grid",
     alignItems: "center",
-    borderRadius: { xs: 0, md: borderRadius.xl },
+    borderRadius: 0,
     paddingTop: pxToRem(4),
     paddingBottom: pxToRem(4),
     paddingRight: absolute ? pxToRem(8) : 0,
@@ -33,8 +33,10 @@ function navbar(theme, ownerState) {
       justifyContent: "space-between",
       alignItems: "center",
       minHeight: "auto",
-      padding: { xs: `${pxToRem(4)} ${pxToRem(8)}`, sm: `${pxToRem(4)} ${pxToRem(16)}` },
+      padding: `${pxToRem(4)} ${pxToRem(8)}`,
+      [breakpoints.up("sm")]: { padding: `${pxToRem(4)} ${pxToRem(16)}` },
     },
+    [breakpoints.up("md")]: { borderRadius: borderRadius.xl },
   };
 }
 
