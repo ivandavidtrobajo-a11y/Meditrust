@@ -112,6 +112,12 @@ class ChatPreferenceRequest(BaseModel):
     model: str
 
 
+class DoctorCreateRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
 # ── Auth models ─────────────────────────────────────
 
 class AuthAttributes(BaseModel):
@@ -240,6 +246,65 @@ def register(request: AuthRequest):
             "name": user.get("name", ""),
             "email": user["email"],
             "role": user.get("role", "embarazada"),
+        },
+    }
+
+
+@app.get("/admin/users")
+def admin_list_users(current_user=Depends(get_current_user)):
+    """Lista cuentas sin exponer hashes ni credenciales; solo administradores."""
+    require_admin(current_user)
+    users = get_db().users.find(
+        {},
+        {"password": 0},
+    ).sort("created_at", -1)
+    result = []
+    for user in users:
+        created_at = user.get("created_at")
+        result.append({
+            "id": str(user["_id"]),
+            "name": user.get("name", ""),
+            "email": user.get("email", ""),
+            "role": user.get("role", "embarazada"),
+            "created_at": created_at.isoformat() if created_at else None,
+        })
+    return {"users": result}
+
+
+@app.post("/admin/doctors", status_code=201)
+def admin_create_doctor(request: DoctorCreateRequest, current_user=Depends(get_current_user)):
+    """Crea una cuenta médica; el rol nunca se acepta desde el cliente."""
+    require_admin(current_user)
+    name = request.name.strip()
+    email = request.email.strip().lower()
+    password = request.password
+    if len(name) < 2 or len(name) > 120:
+        raise HTTPException(status_code=400, detail="El nombre debe tener entre 2 y 120 caracteres.")
+    if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(status_code=400, detail="Introduce un correo electrónico válido.")
+    if len(password) < 8 or len(password) > 128:
+        raise HTTPException(status_code=400, detail="La contraseña inicial debe tener entre 8 y 128 caracteres.")
+    if get_user_by_email(email):
+        raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese correo.")
+    doctor = create_user(name, email, password, role="medico")
+    try:
+        get_db().audit_logs.insert_one({
+            "actor_id": str(current_user["_id"]),
+            "action": "user.doctor_created",
+            "resource_type": "user",
+            "resource_id": doctor["_id"],
+            "details": {"email": email, "role": "medico"},
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception:
+        logging.exception("No se pudo registrar la auditoría del alta médica.")
+    return {
+        "message": "Cuenta médica creada correctamente.",
+        "user": {
+            "id": doctor["_id"],
+            "name": doctor.get("name", ""),
+            "email": doctor["email"],
+            "role": "medico",
         },
     }
 
@@ -622,14 +687,14 @@ async def cancel_task(task_id: str, current_user=Depends(get_current_user)):
 
 @app.get("/documents")
 async def list_docs(current_user=Depends(get_current_user)):
-    require_admin(current_user)
+    require_role(current_user, "medico", "admin")
     docs = list_document_nodes()
     return {"documentos": docs}
 
 
 @app.delete("/documents/{id}")
 async def delete_doc(id: str, current_user=Depends(get_current_user)):
-    require_admin(current_user)
+    require_role(current_user, "medico", "admin")
     try:
         deleted = delete_document_node(id)
         if not deleted:
@@ -642,7 +707,7 @@ async def delete_doc(id: str, current_user=Depends(get_current_user)):
 
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...), current_user=Depends(get_current_user)):
-    require_admin(current_user)
+    require_role(current_user, "medico", "admin")
     try:
         file_path = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_path, "wb") as f:
@@ -728,7 +793,7 @@ def neo4j_test(question: str, current_user=Depends(get_current_user)):
 
 @app.get("/dashboard")
 def dashboard_data(current_user=Depends(get_current_user)):
-    require_admin(current_user)
+    require_role(current_user, "medico", "admin")
     ds = get_latest_dataset()
     if not ds:
         return {"error": "No hay datos cargados"}

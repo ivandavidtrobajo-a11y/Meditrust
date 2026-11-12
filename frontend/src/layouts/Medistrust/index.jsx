@@ -58,7 +58,7 @@ function Medistrust() {
     const loadModelsAndPreference = async () => {
       try {
         const [modelsResponse, preferenceResponse] = await Promise.all([
-          fetch(`${API_BASE}/models`),
+          fetch(`${API_BASE}/models`, { headers: authHeaders() }),
           fetch(`${API_BASE}/chat/preferences/${encodeURIComponent(conversationId)}`, {
             headers: authHeaders(),
           }),
@@ -301,7 +301,7 @@ const handleStopIA = async () => {
     formData.append("file", file);
 
     try {
-      const resp = await fetch(`${API_BASE}/upload/`, { method: "POST", body: formData });
+      const resp = await fetch(`${API_BASE}/upload/`, { method: "POST", headers: authHeaders(), body: formData });
       const data = await resp.json();
       const msg = data.message || data.detail || `Archivo subido: ${file.name}`;
       setMessages((prev) => [...prev, { text: msg, sender: "system" }]);
@@ -318,7 +318,7 @@ const handleStopIA = async () => {
   // --------------------------
   const handleListDocuments = async () => {
     try {
-      const resp = await fetch(`${API_BASE}/documents`);
+      const resp = await fetch(`${API_BASE}/documents`, { headers: authHeaders() });
       if (!resp.ok) {
         console.error("GET /documents failed:", resp.status);
         setMessages((prev) => [...prev, { text: "Error al obtener documentos.", sender: "system" }]);
@@ -340,7 +340,7 @@ const handleStopIA = async () => {
 
   const handleDeleteDocument = async (id) => {
     try {
-      const resp = await fetch(`${API_BASE}/documents/${id}`, { method: "DELETE" });
+      const resp = await fetch(`${API_BASE}/documents/${id}`, { method: "DELETE", headers: authHeaders() });
       if (!resp.ok) {
         console.error("DELETE failed:", resp.status);
         setMessages((prev) => [...prev, { text: "Error al eliminar documento.", sender: "system" }]);
@@ -380,7 +380,7 @@ const handleStopIA = async () => {
         variant="contained"
         color="info"
         startIcon={<Icon>arrow_back</Icon>}
-        onClick={() => navigate("/dashboard")}
+        onClick={() => navigate("/doctor-dashboard")}
         sx={{ mb: 2 }}
       >
         Volver al inicio

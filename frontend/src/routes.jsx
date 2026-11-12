@@ -39,7 +39,7 @@ const routes = [
     key: "dashboard",
     icon: <Icon fontSize="small">dashboard</Icon>,
     route: "/dashboard",
-    allowedRoles: ["admin"],
+    allowedRoles: ["medico", "admin"],
     component: <Dashboard />,
   },
   {
