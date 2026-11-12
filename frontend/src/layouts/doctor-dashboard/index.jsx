@@ -6,6 +6,7 @@ import {
 import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import PersonAddAlt1OutlinedIcon from "@mui/icons-material/PersonAddAlt1Outlined";
 import RefreshOutlinedIcon from "@mui/icons-material/Refresh";
+import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
@@ -31,6 +32,8 @@ export default function DoctorDashboard() {
   const [notice, setNotice] = useState("");
   const [generatedCode, setGeneratedCode] = useState(null);
   const [forms, setForms] = useState({});
+  const [capturesByPatient, setCapturesByPatient] = useState({});
+  const [captureLoading, setCaptureLoading] = useState("");
 
   const loadPatients = useCallback(async () => {
     setLoading(true);
@@ -84,6 +87,15 @@ export default function DoctorDashboard() {
       await loadPatients();
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
+  };
+
+  const loadCaptures = async (patientId) => {
+    setCaptureLoading(patientId); setError("");
+    try {
+      const data = await api(`/patient-captures/${encodeURIComponent(patientId)}`);
+      setCapturesByPatient((previous) => ({ ...previous, [patientId]: data.captures || [] }));
+    } catch (err) { setError(err.message || "No se pudieron consultar las capturas."); }
+    finally { setCaptureLoading(""); }
   };
 
   const deactivate = async (patientId) => {
@@ -184,6 +196,27 @@ export default function DoctorDashboard() {
                           <Button fullWidth variant="contained" disabled={busy} onClick={() => savePregnancy(patient.patient_id)}>Guardar embarazo</Button>
                           <Button fullWidth color="error" variant="outlined" disabled={busy} onClick={() => deactivate(patient.patient_id)}>Desvincular</Button>
                         </Stack>
+                        <Button fullWidth sx={{ mt: 1 }} variant="outlined" startIcon={<ImageOutlinedIcon />}
+                          disabled={captureLoading === patient.patient_id}
+                          onClick={() => loadCaptures(patient.patient_id)}>
+                          {captureLoading === patient.patient_id ? "Consultando capturas..." : "Consultar capturas y experimentos"}
+                        </Button>
+                        {capturesByPatient[patient.patient_id] && (
+                          <Box mt={1} sx={{ maxHeight: 220, overflowY: "auto" }}>
+                            {capturesByPatient[patient.patient_id].length ? capturesByPatient[patient.patient_id].map((capture) => (
+                              <Box key={capture.gridfs_id} py={1} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
+                                <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
+                                  {capture.original_filename || "Captura sin nombre"}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {capture.uploaded_at ? new Date(capture.uploaded_at).toLocaleString() : "Fecha no disponible"}
+                                  {capture.size_bytes ? ` · ${Math.round(capture.size_bytes / 1024)} KB` : ""}
+                                </Typography>
+                                {capture.notes && <Typography variant="caption" display="block">{capture.notes}</Typography>}
+                              </Box>
+                            )) : <Typography variant="body2" color="text.secondary">Esta paciente todavía no ha subido capturas.</Typography>}
+                          </Box>
+                        )}
                       </CardContent>
                     </Card>
                   </Grid>
