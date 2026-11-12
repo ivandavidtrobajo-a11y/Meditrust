@@ -181,7 +181,10 @@ def redeem_linking_code(request: LinkCodeRequest, user=Depends(current_user)):
     now = datetime.now(timezone.utc)
 
     attempts = db.linking_code_attempts.find_one({"_id": patient_id})
-    if attempts and now - attempts.get("window_started_at", now) < timedelta(minutes=CODE_ATTEMPT_WINDOW_MINUTES):
+    window_started_at = attempts.get("window_started_at") if attempts else None
+    if window_started_at and window_started_at.tzinfo is None:
+        window_started_at = window_started_at.replace(tzinfo=timezone.utc)
+    if attempts and window_started_at and now - window_started_at < timedelta(minutes=CODE_ATTEMPT_WINDOW_MINUTES):
         if attempts.get("attempts", 0) >= MAX_CODE_ATTEMPTS:
             raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
         db.linking_code_attempts.update_one({"_id": patient_id}, {"$inc": {"attempts": 1}})
