@@ -7,6 +7,8 @@ import Medistrust from "layouts/Medistrust";
 
 import Smartwatch from "layouts/smartwatch";
 import PatientCapture from "layouts/patient-capture";
+import DoctorDashboard from "layouts/doctor-dashboard";
+import PatientDashboard from "layouts/patient-dashboard";
 import SignIn from "layouts/authentication/sign-in";
 import SignUp from "layouts/authentication/sign-up";
 
@@ -21,6 +23,16 @@ import ResetPassword from "auth/reset-password";
 import Icon from "@mui/material/Icon";
 
 const routes = [
+  {
+    type: "collapse", name: "Panel médico", key: "doctor-dashboard",
+    icon: <Icon fontSize="small">medical_services</Icon>, route: "/doctor-dashboard",
+    allowedRoles: ["medico"], component: <DoctorDashboard />,
+  },
+  {
+    type: "collapse", name: "Mi embarazo", key: "patient-dashboard",
+    icon: <Icon fontSize="small">pregnant_woman</Icon>, route: "/patient-dashboard",
+    allowedRoles: ["embarazada"], component: <PatientDashboard />,
+  },
   {
     type: "collapse",
     name: "Inicio",

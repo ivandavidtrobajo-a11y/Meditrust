@@ -10,8 +10,8 @@ export const AuthContext = createContext({
 });
 
 export const getRoleHomePath = (role) => {
-  if (role === "embarazada") return "/patient-capture";
-  if (role === "medico") return "/Medistrust";
+  if (role === "embarazada") return "/patient-dashboard";
+  if (role === "medico") return "/doctor-dashboard";
   if (role === "admin") return "/dashboard";
   return "/auth/login";
 };
