@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from database.mongodb import get_db
 from services.auth_service import decode_token, get_user_by_id
@@ -139,7 +140,10 @@ def ensure_workflow_indexes():
         db.linking_codes.create_index("code_hash", unique=True)
         db.linking_codes.create_index("expires_at", expireAfterSeconds=0)
         db.doctor_patient_assignments.create_index(
-            [("doctor_id", 1), ("patient_id", 1), ("status", 1)]
+            [("doctor_id", 1), ("patient_id", 1)],
+            unique=True,
+            partialFilterExpression={"status": "active"},
+            name="unique_active_doctor_patient",
         )
         db.patient_profiles.create_index("patient_id", unique=True)
         db.audit_logs.create_index([("actor_id", 1), ("created_at", -1)])
@@ -228,7 +232,14 @@ def redeem_linking_code(request: LinkCodeRequest, user=Depends(current_user)):
         "created_via": "linking_code",
         "linking_code_id": str(code_record["_id"]),
     }
-    db.doctor_patient_assignments.insert_one(assignment)
+    try:
+        db.doctor_patient_assignments.insert_one(assignment)
+    except DuplicateKeyError:
+        # Otra solicitud pudo crear la misma relación simultáneamente.
+        existing = _active_assignment(db, code_record["doctor_id"], patient_id)
+        if existing:
+            return {"message": "Ya existe una vinculación activa con este médico.", "assignment_id": existing["assignment_id"]}
+        raise
     _audit(db, patient_id, "doctor_patient_assignment.created", patient_id,
            {"doctor_id": code_record["doctor_id"], "assignment_id": assignment["assignment_id"]})
     _sync_assignment_graph(doctor, patient, assignment, active=True)
