@@ -87,7 +87,7 @@ function Login() {
       const response = await AuthService.login(myData);
       authContext.login(response.access_token, response.user);
     } catch (res) {
-      const message = res?.message || res?.errors?.[0]?.detail || "Error al iniciar sesión. Revisa la consola.";
+      const message = res?.detail || res?.message || res?.errors?.[0]?.detail || "Error al iniciar sesión. Revisa la consola.";
       setCredentialsError(message);
       console.error("Login error:", res);
     }

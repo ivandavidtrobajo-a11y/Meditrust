@@ -1,25 +1,17 @@
 
-
-// prop-types is a library for typechecking of props
 import PropTypes from "prop-types";
-
-// @mui material components
 import Grid from "@mui/material/Grid";
-
-// Material Dashboard 2 React components
-import MDBox from "components/MDBox";
-
-// Material Dashboard 2 React example components
-import DefaultNavbar from "examples/Navbars/DefaultNavbar";
-import PageLayout from "examples/LayoutContainers/PageLayout";
-
-// Authentication pages components
-import Footer from "layouts/authentication/components/Footer";
 import { Typography, List, ListItem, ListItemText } from "@mui/material";
 import { useLocation } from "react-router-dom";
 
+import MDBox from "components/MDBox";
+import DefaultNavbar from "examples/Navbars/DefaultNavbar";
+import PageLayout from "examples/LayoutContainers/PageLayout";
+import Footer from "layouts/authentication/components/Footer";
+
 function BasicLayout({ image, children }) {
   const { pathname } = useLocation();
+
   return (
     <PageLayout>
       <DefaultNavbar
@@ -31,15 +23,15 @@ function BasicLayout({ image, children }) {
         }}
       />
       <MDBox
-        sx={{ height: "auto", minHeight: "100vh" }}
-        display="flex"
-        flexDirection="column"
-        minHeight="100vh"
+        sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
+        width="100%"
       >
         <MDBox
-          position="absolute"
+          position="relative"
           width="100%"
           minHeight="100vh"
+          display="flex"
+          flexDirection="column"
           sx={{
             backgroundImage: ({ functions: { linearGradient, rgba }, palette: { gradients } }) =>
               image &&
@@ -50,20 +42,20 @@ function BasicLayout({ image, children }) {
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
+            flex: "1 0 auto",
           }}
         >
           <MDBox
             position="relative"
-            height="100%"
             display="flex"
             flexDirection="column"
-            width="100%"
             justifyContent="center"
-            paddingTop="4em"
+            width="100%"
+            sx={{ flex: "1 0 auto", paddingTop: "4em" }}
           >
             <MDBox paddingBottom="3rem" sx={{ textAlign: "center" }}>
               {pathname === "/auth/login" && (
-                <MDBox display="flex" width="100%" justifyContent="center" sx={{ zIndex: "99" }}>
+                <MDBox display="flex" width="100%" justifyContent="center" sx={{ zIndex: 99 }}>
                   <MDBox
                     display="flex"
                     flexDirection="column"
@@ -72,13 +64,12 @@ function BasicLayout({ image, children }) {
                     padding="1.5rem"
                     width="80%"
                   >
-                    <Typography variant="h3" style={{ color: "white" }}>
-                    Iniciar sesión — Sistema Médico
-                  </Typography>
-                  
-                  <Typography variant="body2" style={{ color: "white" }} margin="0.5rem 0">
-                  Inicia sesión con tu cuenta
-                  </Typography>
+                    <Typography variant="h3" sx={{ color: "white" }}>
+                      Iniciar sesión — Sistema Médico
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "white" }} margin="0.5rem 0">
+                      Inicia sesión con tu cuenta
+                    </Typography>
                     <MDBox
                       display="flex"
                       flexDirection="column"
@@ -86,20 +77,11 @@ function BasicLayout({ image, children }) {
                       alignItems="center"
                       marginBottom="0.5rem"
                     >
-                      
-                      <List dense={true}>
+                      <List dense>
                         <ListItem>
                           <ListItemText
                             disableTypography
-                            primary={
-                              <Typography
-                                variant="body2"
-                                fontWeight="400"
-                                style={{ color: "white" }}
-                              >
-                              
-                              </Typography>
-                            }
+                            primary={<Typography variant="body2" fontWeight="400" sx={{ color: "white" }} />}
                           />
                         </ListItem>
                       </List>
@@ -123,7 +105,6 @@ function BasicLayout({ image, children }) {
   );
 }
 
-// Typechecking props for the BasicLayout
 BasicLayout.propTypes = {
   image: PropTypes.string.isRequired,
   children: PropTypes.node.isRequired,
