@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
 from services.authorization import require_role, require_admin, require_patient_access
+from services.clinical_workflow import router as clinical_workflow_router
 
 load_dotenv()
 try:
@@ -930,3 +931,7 @@ if frontend_build.exists():
     from fastapi.staticfiles import StaticFiles
     app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
     logging.info("Frontend static files mounted from %s", frontend_build)
+
+
+# Flujo clínico: asignaciones médico-paciente y datos del embarazo.
+app.include_router(clinical_workflow_router)
