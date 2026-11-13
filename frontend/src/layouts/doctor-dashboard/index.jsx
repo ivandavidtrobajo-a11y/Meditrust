@@ -7,6 +7,7 @@ import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import PersonAddAlt1OutlinedIcon from "@mui/icons-material/PersonAddAlt1Outlined";
 import RefreshOutlinedIcon from "@mui/icons-material/Refresh";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import CaptureAnalysisPanel from "layouts/doctor-dashboard/CaptureAnalysisPanel";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
@@ -263,6 +264,7 @@ export default function DoctorDashboard() {
                                   {capture.size_bytes ? ` · ${Math.round(capture.size_bytes / 1024)} KB` : ""}
                                 </Typography>
                                 {capture.notes && <Typography variant="caption" display="block">{capture.notes}</Typography>}
+                                <CaptureAnalysisPanel patientId={patient.patient_id} capture={capture} />
                                 {captureImageUrls[capture.gridfs_id] && (
                                   <Box mt={1}>
                                     <img

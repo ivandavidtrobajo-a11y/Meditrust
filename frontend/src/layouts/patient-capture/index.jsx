@@ -351,6 +351,14 @@ export default function PatientCapture() {
                             <Typography variant="body2" color="text.secondary">
                               Fecha: {capture.uploaded_at ? new Date(capture.uploaded_at).toLocaleString() : "No disponible"}
                             </Typography>
+                            <Chip size="small" sx={{ mt: 1 }} color={capture.analysis_status === "needs_review" || capture.analysis_status === "analysis_failed" ? "warning" : "default"} label={{ queued: "Análisis en cola", processing: "Analizando captura", retrying: "Reintentando análisis", no_alerts_detected: "Sin alertas detectadas", needs_review: "Requiere revisión médica", analysis_failed: "No se pudo analizar", reviewed: "Revisada por el médico" }[capture.analysis_status] || "Estado del análisis no disponible"} />
+                            {capture.analysis?.readings && (
+                              <Alert severity={capture.analysis.status === "needs_review" || capture.analysis.status === "analysis_failed" ? "warning" : "info"} sx={{ mt: 1 }}>
+                                <Typography variant="caption" display="block">Datos extraídos automáticamente (no constituyen diagnóstico):</Typography>
+                                <Typography variant="body2">{JSON.stringify(capture.analysis.readings)}</Typography>
+                                {capture.analysis.review_reasons?.map((reason, index) => <Typography key={index} variant="caption" display="block">{reason}</Typography>)}
+                              </Alert>
+                            )}
                             {capture.notes && (
                               <Typography variant="body2" sx={{ mt: 1, whiteSpace: "pre-wrap" }}>
                                 Nota: {capture.notes}

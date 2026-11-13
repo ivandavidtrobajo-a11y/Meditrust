@@ -37,6 +37,7 @@ from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
 from services.authorization import require_role, require_admin, require_patient_access, require_active_user
 from services.clinical_workflow import router as clinical_workflow_router
+from services.capture_analysis import manager as capture_analysis_manager
 
 load_dotenv()
 try:
@@ -101,6 +102,28 @@ if bootstrap_email and bootstrap_password and not db.users.find_one({"email": bo
     logging.info("Bootstrap administrator created from environment configuration.")
 
 
+
+
+@app.on_event("startup")
+def start_capture_analysis_worker():
+    try:
+        database = get_db()
+        indexes = [
+            (database.capture_analysis_jobs, [("status", 1), ("next_attempt_at", 1), ("created_at", 1)]),
+            (database.capture_analysis_jobs, [("patient_id", 1), ("gridfs_id", 1)]),
+            (database.capture_analysis_runs, [("patient_id", 1), ("gridfs_id", 1), ("started_at", -1)]),
+            (database.capture_analysis_reviews, [("patient_id", 1), ("gridfs_id", 1), ("reviewed_at", -1)]),
+        ]
+        for collection, keys in indexes:
+            try:
+                collection.create_index(keys)
+            except Exception:
+                logging.exception("No se pudo crear un índice de análisis de capturas.")
+    except Exception:
+        logging.exception("MongoDB no está disponible al iniciar el trabajador; se reintentará desde el proceso.")
+    capture_analysis_manager.start()
+
+
 class QuestionRequest(BaseModel):
     question: str
     model: str = None
@@ -125,6 +148,16 @@ class AdminUserUpdateRequest(BaseModel):
 
 class AdminUserStatusRequest(BaseModel):
     is_active: bool
+
+
+class CaptureReanalysisRequest(BaseModel):
+    provider: str
+    model: str
+
+
+class CaptureReviewRequest(BaseModel):
+    corrected_readings: dict
+    note: str = ""
 
 
 # ── Auth models ─────────────────────────────────────
@@ -593,12 +626,14 @@ async def upload_patient_captures(
                 "uploaded_at": uploaded_at,
             }
             records.insert_one(record)
+            capture_analysis_manager.enqueue(patient_id, str(gridfs_id), item["filename"], actor_id=user_id)
             stored.append({
                 "id": str(gridfs_id),
                 "patient_id": patient_id,
                 "filename": item["filename"],
                 "content_type": item["content_type"],
                 "size_bytes": item["size"],
+                "analysis_status": "queued",
                 "uploaded_at": uploaded_at.isoformat(),
             })
     except Exception:
@@ -619,13 +654,136 @@ def list_patient_captures(patient_id: str, current_user=Depends(get_current_user
             {"patient_id": patient_id},
             {"_id": 0, "gridfs_id": 1, "patient_id": 1, "patient_name": 1,
              "original_filename": 1, "content_type": 1, "size_bytes": 1,
-             "notes": 1, "uploaded_at": 1},
+             "notes": 1, "uploaded_at": 1, "analysis_status": 1,
+             "analysis_updated_at": 1, "latest_run_id": 1},
         ).sort("uploaded_at", -1).limit(100)
     )
     for item in captures:
         if item.get("uploaded_at"):
             item["uploaded_at"] = item["uploaded_at"].isoformat()
+        if item.get("analysis_updated_at"):
+            item["analysis_updated_at"] = item["analysis_updated_at"].isoformat()
+        latest = database["capture_analysis_runs"].find_one(
+            {"patient_id": patient_id, "gridfs_id": item["gridfs_id"]},
+            {"raw_response": 0, "model_content": 0},
+            sort=[("started_at", -1)],
+        )
+        if latest:
+            item["analysis"] = {
+                "status": latest.get("classification", latest.get("status")),
+                "readings": latest.get("readings", {}),
+                "review_reasons": latest.get("review_reasons", []),
+                "image_quality": latest.get("image_quality"),
+                "started_at": latest.get("started_at").isoformat() if latest.get("started_at") else None,
+            }
+            latest_review = database["capture_analysis_reviews"].find_one(
+                {"patient_id": patient_id, "gridfs_id": item["gridfs_id"]},
+                sort=[("reviewed_at", -1)],
+            )
+            if latest_review:
+                item["analysis"]["readings"] = latest_review.get("corrected_readings", item["analysis"]["readings"])
+                item["analysis"]["reviewed"] = True
+        else:
+            item["analysis"] = None
     return {"patient_id": patient_id, "captures": captures}
+
+
+
+
+def _capture_model_catalog():
+    configured = os.getenv("CAPTURE_MODELS_JSON", "").strip()
+    if configured:
+        try:
+            values = json.loads(configured)
+            return [item for item in values if isinstance(item, dict)
+                    and item.get("provider") in {"openrouter", "gemini", "huggingface"}
+                    and item.get("id")]
+        except ValueError:
+            logging.exception("CAPTURE_MODELS_JSON no es válido.")
+    models = []
+    if os.getenv("OPENROUTER_API_KEY"):
+        models.append({"id": os.getenv("OPENROUTER_DEFAULT_MODEL", "openrouter/free"),
+                       "name": "OpenRouter (predeterminado)", "provider": "openrouter"})
+    if os.getenv("GEMINI_API_KEY"):
+        models.append({"id": os.getenv("GEMINI_DEFAULT_MODEL", "gemini-2.0-flash"),
+                       "name": "Gemini", "provider": "gemini"})
+    if os.getenv("HF_API_TOKEN"):
+        models.append({"id": os.getenv("HF_DEFAULT_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct"),
+                       "name": "Hugging Face", "provider": "huggingface"})
+    return models
+
+
+@app.get("/doctor/capture-models")
+def doctor_capture_models(current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
+    return {"models": _capture_model_catalog()}
+
+
+@app.post("/doctor/patient-captures/{patient_id}/{gridfs_id}/reanalyze", status_code=202)
+def doctor_reanalyze_capture(patient_id: str, gridfs_id: str, request: CaptureReanalysisRequest,
+                             current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
+    database = get_db()
+    require_patient_access(current_user, patient_id, database)
+    allowed = _capture_model_catalog()
+    if not any(item.get("provider") == request.provider and item.get("id") == request.model for item in allowed):
+        raise HTTPException(status_code=400, detail="El modelo no está configurado o permitido.")
+    if database.patient_capture_records.find_one({"patient_id": patient_id, "gridfs_id": gridfs_id}) is None:
+        raise HTTPException(status_code=404, detail="Captura no encontrada.")
+    try:
+        job_id = capture_analysis_manager.enqueue(
+            patient_id, gridfs_id, "reanálisis", provider=request.provider,
+            model=request.model, actor_id=str(current_user["_id"]), job_type="manual")
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="No se pudo crear el análisis: " + str(exc))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/patient-captures/{patient_id}/analysis-history")
+def patient_capture_analysis_history(patient_id: str, gridfs_id: str = None,
+                                      current_user=Depends(get_current_user)):
+    database = get_db()
+    require_patient_access(current_user, patient_id, database)
+    include_raw = current_user.get("role") == "medico"
+    return {
+        "runs": capture_analysis_manager.history(patient_id, gridfs_id, include_raw=include_raw),
+        "reviews": capture_analysis_manager.reviews(patient_id, gridfs_id),
+    }
+
+
+@app.put("/doctor/patient-captures/{patient_id}/{gridfs_id}/review")
+def doctor_review_capture(patient_id: str, gridfs_id: str, request: CaptureReviewRequest,
+                          current_user=Depends(get_current_user)):
+    require_role(current_user, "medico")
+    database = get_db()
+    require_patient_access(current_user, patient_id, database)
+    record = database.patient_capture_records.find_one({"patient_id": patient_id, "gridfs_id": gridfs_id})
+    if record is None:
+        raise HTTPException(status_code=404, detail="Captura no encontrada.")
+    latest = database.capture_analysis_runs.find_one(
+        {"patient_id": patient_id, "gridfs_id": gridfs_id}, sort=[("started_at", -1)])
+    review = {
+        "patient_id": patient_id, "gridfs_id": gridfs_id,
+        "run_id": latest.get("_id") if latest else None,
+        "original_readings": latest.get("readings", {}) if latest else {},
+        "corrected_readings": request.corrected_readings,
+        "note": request.note.strip()[:2000],
+        "reviewed_by": str(current_user["_id"]),
+        "reviewed_at": datetime.now(timezone.utc),
+    }
+    result = database.capture_analysis_reviews.insert_one(review)
+    database.patient_capture_records.update_one(
+        {"patient_id": patient_id, "gridfs_id": gridfs_id},
+        {"$set": {"analysis_status": "reviewed", "latest_review_id": str(result.inserted_id)}})
+    try:
+        database.audit_logs.insert_one({
+            "actor_id": str(current_user["_id"]), "action": "capture.reviewed",
+            "resource_type": "patient_capture", "resource_id": gridfs_id,
+            "details": {"patient_id": patient_id, "review_id": str(result.inserted_id)},
+            "created_at": datetime.now(timezone.utc)})
+    except Exception:
+        logging.exception("No se pudo registrar la auditoría de revisión.")
+    return {"review_id": str(result.inserted_id), "status": "reviewed"}
 
 
 @app.get("/patient-captures/{patient_id}/{gridfs_id}/image")
