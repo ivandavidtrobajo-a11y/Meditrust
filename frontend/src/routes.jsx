@@ -54,20 +54,21 @@ const routes = [
 
 {
   type: "collapse",
-  name: "Captura de pacientes",
+  name: "Smartwatch",
   key: "patient-capture",
-  icon: <Icon fontSize="small">cloud_upload</Icon>,
+  icon: <Icon fontSize="small">watch</Icon>,
   route: "/patient-capture",
   allowedRoles: ["embarazada"],
   component: <PatientCapture />,
 },
 {
-  type: "collapse",
-  name: "Smartwatch",
-  key: "smartwatch",
-  icon: <Icon fontSize="small">watch</Icon>,
+  // Compatibilidad con enlaces antiguos: redirige al módulo integrado.
+  // type "route" evita duplicar la opción en el menú lateral.
+  type: "route",
+  name: "Smartwatch (ruta antigua)",
+  key: "smartwatch-legacy",
   route: "/smartwatch",
-  allowedRoles: [],
+  allowedRoles: ["embarazada"],
   component: <Smartwatch />,
 },
 

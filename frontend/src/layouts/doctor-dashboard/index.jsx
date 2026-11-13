@@ -34,6 +34,8 @@ export default function DoctorDashboard() {
   const [forms, setForms] = useState({});
   const [capturesByPatient, setCapturesByPatient] = useState({});
   const [captureLoading, setCaptureLoading] = useState("");
+  const [captureImageUrls, setCaptureImageUrls] = useState({});
+  const [captureImageLoading, setCaptureImageLoading] = useState("");
 
   const loadPatients = useCallback(async () => {
     setLoading(true);
@@ -97,6 +99,49 @@ export default function DoctorDashboard() {
     } catch (err) { setError(err.message || "No se pudieron consultar las capturas."); }
     finally { setCaptureLoading(""); }
   };
+
+  const toggleCaptureImage = async (capture) => {
+    const imageId = capture.gridfs_id;
+    if (captureImageUrls[imageId]) {
+      URL.revokeObjectURL(captureImageUrls[imageId]);
+      setCaptureImageUrls((previous) => {
+        const next = { ...previous };
+        delete next[imageId];
+        return next;
+      });
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setError("Tu sesión no contiene un token. Inicia sesión de nuevo.");
+      return;
+    }
+
+    setError("");
+    setCaptureImageLoading(imageId);
+    try {
+      const url = `${API_BASE}/patient-captures/${encodeURIComponent(capture.patient_id)}/${encodeURIComponent(imageId)}/image`;
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `No se pudo recuperar la imagen (HTTP ${response.status}).`);
+      }
+      const objectUrl = URL.createObjectURL(await response.blob());
+      setCaptureImageUrls((previous) => {
+        if (previous[imageId]) URL.revokeObjectURL(previous[imageId]);
+        return { ...previous, [imageId]: objectUrl };
+      });
+    } catch (err) {
+      setError(err.message || "No se pudo recuperar la imagen original.");
+    } finally {
+      setCaptureImageLoading("");
+    }
+  };
+
+  useEffect(() => () => {
+    Object.values(captureImageUrls).forEach((url) => URL.revokeObjectURL(url));
+  }, [captureImageUrls]);
 
   const deactivate = async (patientId) => {
     if (!window.confirm("¿Desactivar la vinculación con esta paciente? El historial se conservará.")) return;
@@ -213,6 +258,26 @@ export default function DoctorDashboard() {
                                   {capture.size_bytes ? ` · ${Math.round(capture.size_bytes / 1024)} KB` : ""}
                                 </Typography>
                                 {capture.notes && <Typography variant="caption" display="block">{capture.notes}</Typography>}
+                                {captureImageUrls[capture.gridfs_id] && (
+                                  <Box mt={1}>
+                                    <img
+                                      src={captureImageUrls[capture.gridfs_id]}
+                                      alt={capture.original_filename || "Captura del smartwatch"}
+                                      style={{ width: "100%", maxHeight: 260, objectFit: "contain", display: "block", background: "#f5f5f5", borderRadius: 8 }}
+                                    />
+                                  </Box>
+                                )}
+                                <Button
+                                  fullWidth
+                                  size="small"
+                                  sx={{ mt: 1 }}
+                                  variant={captureImageUrls[capture.gridfs_id] ? "text" : "outlined"}
+                                  disabled={captureImageLoading === capture.gridfs_id}
+                                  onClick={() => toggleCaptureImage(capture)}
+                                  startIcon={captureImageLoading === capture.gridfs_id ? <CircularProgress size={16} /> : <ImageOutlinedIcon />}
+                                >
+                                  {captureImageLoading === capture.gridfs_id ? "Cargando imagen..." : captureImageUrls[capture.gridfs_id] ? "Ocultar imagen" : "Ver imagen original"}
+                                </Button>
                               </Box>
                             )) : <Typography variant="body2" color="text.secondary">Esta paciente todavía no ha subido capturas.</Typography>}
                           </Box>
