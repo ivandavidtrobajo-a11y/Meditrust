@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Grid, Stack, TextField, Typography,
@@ -36,6 +36,7 @@ export default function DoctorDashboard() {
   const [captureLoading, setCaptureLoading] = useState("");
   const [captureImageUrls, setCaptureImageUrls] = useState({});
   const [captureImageLoading, setCaptureImageLoading] = useState("");
+  const captureImageUrlsRef = useRef({});
 
   const loadPatients = useCallback(async () => {
     setLoading(true);
@@ -139,9 +140,13 @@ export default function DoctorDashboard() {
     }
   };
 
-  useEffect(() => () => {
-    Object.values(captureImageUrls).forEach((url) => URL.revokeObjectURL(url));
+  useEffect(() => {
+    captureImageUrlsRef.current = captureImageUrls;
   }, [captureImageUrls]);
+
+  useEffect(() => () => {
+    Object.values(captureImageUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+  }, []);
 
   const deactivate = async (patientId) => {
     if (!window.confirm("¿Desactivar la vinculación con esta paciente? El historial se conservará.")) return;
