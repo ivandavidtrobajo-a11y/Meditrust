@@ -52,6 +52,7 @@ def create_user(name: str, email: str, password: str, role: str = "embarazada"):
         "email": email,
         "password": hash_password(password),
         "role": role,
+        "is_active": True,
         "profile_image": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),

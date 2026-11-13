@@ -35,7 +35,7 @@ from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
-from services.authorization import require_role, require_admin, require_patient_access
+from services.authorization import require_role, require_admin, require_patient_access, require_active_user
 from services.clinical_workflow import router as clinical_workflow_router
 
 load_dotenv()
@@ -118,6 +118,15 @@ class DoctorCreateRequest(BaseModel):
     password: str
 
 
+class AdminUserUpdateRequest(BaseModel):
+    name: str
+    email: str
+
+
+class AdminUserStatusRequest(BaseModel):
+    is_active: bool
+
+
 # ── Auth models ─────────────────────────────────────
 
 class AuthAttributes(BaseModel):
@@ -150,6 +159,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     user = get_user_by_id(payload.get("id"))
     if user is None:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    require_active_user(user)
     return user
 
 
@@ -205,6 +215,8 @@ def login(request: AuthRequest):
     user = get_user_by_email(attrs.email)
     if not user or not verify_password(attrs.password, user["password"]):
         raise HTTPException(status_code=400, detail="Credenciales inválidas")
+    if user.get("is_active", True) is False:
+        raise HTTPException(status_code=403, detail="Esta cuenta está desactivada. Contacta con un administrador.")
 
     access_token = create_access_token({
         "id": str(user["_id"]),
@@ -250,25 +262,141 @@ def register(request: AuthRequest):
     }
 
 
+def _admin_user_payload(user: dict) -> dict:
+    created_at = user.get("created_at")
+    updated_at = user.get("updated_at")
+    return {
+        "id": str(user["_id"]),
+        "name": user.get("name", ""),
+        "email": user.get("email", ""),
+        "role": user.get("role", "embarazada"),
+        "is_active": user.get("is_active", True) is not False,
+        "created_at": created_at.isoformat() if created_at else None,
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
+
+
+def _audit_admin_user_action(actor: dict, action: str, target: dict, details: dict = None):
+    try:
+        get_db().audit_logs.insert_one({
+            "actor_id": str(actor["_id"]),
+            "action": action,
+            "resource_type": "user",
+            "resource_id": target["_id"],
+            "details": details or {},
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception:
+        logging.exception("No se pudo registrar la auditoría de la operación administrativa.")
+
+
 @app.get("/admin/users")
 def admin_list_users(current_user=Depends(get_current_user)):
     """Lista cuentas sin exponer hashes ni credenciales; solo administradores."""
     require_admin(current_user)
-    users = get_db().users.find(
-        {},
-        {"password": 0},
-    ).sort("created_at", -1)
-    result = []
-    for user in users:
-        created_at = user.get("created_at")
-        result.append({
-            "id": str(user["_id"]),
-            "name": user.get("name", ""),
-            "email": user.get("email", ""),
-            "role": user.get("role", "embarazada"),
-            "created_at": created_at.isoformat() if created_at else None,
-        })
-    return {"users": result}
+    users = get_db().users.find({}, {"password": 0}).sort("created_at", -1)
+    return {"users": [_admin_user_payload(user) for user in users]}
+
+
+@app.get("/admin/users/{user_id}")
+def admin_get_user(user_id: str, current_user=Depends(get_current_user)):
+    """Devuelve los detalles de una cuenta, sin exponer credenciales."""
+    require_admin(current_user)
+    try:
+        object_id = ObjectId(user_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    user = get_db().users.find_one({"_id": object_id}, {"password": 0})
+    if user is None:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    return {"user": _admin_user_payload(user)}
+
+
+@app.patch("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: str,
+    request: AdminUserUpdateRequest,
+    current_user=Depends(get_current_user),
+):
+    """Actualiza únicamente nombre y correo; el rol queda fuera de esta operación."""
+    require_admin(current_user)
+    try:
+        object_id = ObjectId(user_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    target = get_db().users.find_one({"_id": object_id})
+    if target is None:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    name = request.name.strip()
+    email = request.email.strip().lower()
+    if len(name) < 2 or len(name) > 120:
+        raise HTTPException(status_code=400, detail="El nombre debe tener entre 2 y 120 caracteres.")
+    if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(status_code=400, detail="Introduce un correo electrónico válido.")
+
+    duplicate = get_db().users.find_one({"email": email, "_id": {"$ne": object_id}})
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Ya existe otra cuenta con ese correo.")
+
+    get_db().users.update_one(
+        {"_id": object_id},
+        {"$set": {"name": name, "email": email, "updated_at": datetime.now(timezone.utc)}},
+    )
+    updated = get_db().users.find_one({"_id": object_id}, {"password": 0})
+    _audit_admin_user_action(
+        current_user, "user.updated", target,
+        {"previous_email": target.get("email", ""), "new_email": email, "name": name},
+    )
+    return {"message": "Cuenta actualizada correctamente.", "user": _admin_user_payload(updated)}
+
+
+@app.patch("/admin/users/{user_id}/status")
+def admin_update_user_status(
+    user_id: str,
+    request: AdminUserStatusRequest,
+    current_user=Depends(get_current_user),
+):
+    """Activa o desactiva una cuenta sin eliminar sus datos."""
+    require_admin(current_user)
+    try:
+        object_id = ObjectId(user_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    database = get_db()
+    target = database.users.find_one({"_id": object_id})
+    if target is None:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    if request.is_active is False:
+        if object_id == current_user["_id"]:
+            raise HTTPException(status_code=400, detail="No puedes desactivar tu propia cuenta.")
+        if target.get("role", "embarazada") == "admin":
+            active_admins = database.users.count_documents({
+                "role": "admin",
+                "is_active": {"$ne": False},
+            })
+            if active_admins <= 1:
+                raise HTTPException(status_code=409, detail="No puedes desactivar al último administrador activo.")
+
+    current_status = target.get("is_active", True) is not False
+    if current_status == request.is_active:
+        return {"message": "El estado de la cuenta ya estaba actualizado.", "user": _admin_user_payload(target)}
+
+    database.users.update_one(
+        {"_id": object_id},
+        {"$set": {"is_active": request.is_active, "updated_at": datetime.now(timezone.utc)}},
+    )
+    updated = database.users.find_one({"_id": object_id}, {"password": 0})
+    action = "user.reactivated" if request.is_active else "user.deactivated"
+    _audit_admin_user_action(current_user, action, target, {
+        "email": target.get("email", ""),
+        "is_active": request.is_active,
+    })
+    message = "Cuenta reactivada correctamente." if request.is_active else "Cuenta desactivada correctamente."
+    return {"message": message, "user": _admin_user_payload(updated)}
 
 
 @app.post("/admin/doctors", status_code=201)

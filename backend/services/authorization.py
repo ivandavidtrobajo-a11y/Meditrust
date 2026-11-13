@@ -35,3 +35,10 @@ def require_patient_access(current_user: dict, patient_id: str, database=None) -
             raise HTTPException(status_code=403, detail="No tienes una asignación activa con este paciente.")
         return current_user
     raise HTTPException(status_code=403, detail="Este perfil no tiene acceso a datos clínicos de pacientes.")
+
+
+def require_active_user(current_user: dict) -> dict:
+    """Rechaza cuentas desactivadas; los registros antiguos sin is_active siguen activos."""
+    if current_user.get("is_active", True) is False:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta cuenta está desactivada. Contacta con un administrador.")
+    return current_user
