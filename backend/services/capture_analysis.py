@@ -106,8 +106,19 @@ class CaptureAnalysisManager:
         self.stop_event.clear()
         self.thread=threading.Thread(target=self.loop,name="capture-analysis-worker",daemon=True)
         self.thread.start()
-    def enqueue(self,patient_id,gridfs_id,filename,provider="openrouter",model=None,actor_id=None,job_type="automatic"):
-        model=model or os.getenv("OPENROUTER_DEFAULT_MODEL","openrouter/free")
+    def enqueue(self,patient_id,gridfs_id,filename,provider=None,model=None,actor_id=None,job_type="automatic"):
+        # El proveedor automático es configurable por entorno. Los reanálisis
+        # manuales conservan el proveedor/modelo explícitos enviados por el médico.
+        provider=(provider or os.getenv("CAPTURE_DEFAULT_PROVIDER","gemini")).strip().lower()
+        if provider not in {"openrouter","gemini","huggingface"}:
+            raise ValueError("CAPTURE_DEFAULT_PROVIDER debe ser openrouter, gemini o huggingface.")
+        model_env={
+            "openrouter": ("OPENROUTER_DEFAULT_MODEL","openrouter/free"),
+            "gemini": ("GEMINI_DEFAULT_MODEL","gemini-3.5-flash"),
+            "huggingface": ("HF_DEFAULT_MODEL","Qwen/Qwen2.5-VL-7B-Instruct"),
+        }
+        model_variable,default_model=model_env[provider]
+        model=model or os.getenv(model_variable,default_model)
         db=get_db(); stamp=now()
         result=db.capture_analysis_jobs.insert_one({"patient_id":patient_id,"gridfs_id":gridfs_id,"filename":filename,"provider":provider,"model":model,"status":"queued","attempts":0,"max_attempts":int(os.getenv("CAPTURE_ANALYSIS_MAX_ATTEMPTS", "5")),"created_at":stamp,"updated_at":stamp,"next_attempt_at":stamp,"requested_by":actor_id,"job_type":job_type})
         db.patient_capture_records.update_one({"patient_id":patient_id,"gridfs_id":gridfs_id},{"$set":{"analysis_status":"queued","analysis_updated_at":stamp}})
