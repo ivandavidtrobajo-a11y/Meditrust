@@ -705,7 +705,7 @@ def _capture_model_catalog():
         models.append({"id": os.getenv("OPENROUTER_DEFAULT_MODEL", "openrouter/free"),
                        "name": "OpenRouter (predeterminado)", "provider": "openrouter"})
     if os.getenv("GEMINI_API_KEY"):
-        models.append({"id": os.getenv("GEMINI_DEFAULT_MODEL", "gemini-2.0-flash"),
+        models.append({"id": os.getenv("GEMINI_DEFAULT_MODEL", "gemini-3.5-flash"),
                        "name": "Gemini", "provider": "gemini"})
     if os.getenv("HF_API_TOKEN"):
         models.append({"id": os.getenv("HF_DEFAULT_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct"),
