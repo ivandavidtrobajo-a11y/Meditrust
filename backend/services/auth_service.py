@@ -11,6 +11,11 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def normalize_email(email: str) -> str:
+    """Devuelve una representación canónica del correo para guardar y consultar."""
+    return (email or "").strip().lower()
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -36,7 +41,8 @@ def decode_token(token: str) -> dict:
 
 def get_user_by_email(email: str):
     db = get_db()
-    return db.users.find_one({"email": email})
+    normalized_email = normalize_email(email)
+    return db.users.find_one({"email": normalized_email})
 
 
 def get_user_by_id(user_id: str):
@@ -47,9 +53,10 @@ def get_user_by_id(user_id: str):
 
 def create_user(name: str, email: str, password: str, role: str = "embarazada"):
     db = get_db()
+    normalized_email = normalize_email(email)
     user = {
         "name": name,
-        "email": email,
+        "email": normalized_email,
         "password": hash_password(password),
         "role": role,
         "is_active": True,
@@ -64,14 +71,18 @@ def create_user(name: str, email: str, password: str, role: str = "embarazada"):
 
 def update_user(email: str, updates: dict):
     db = get_db()
-    updates["updated_at"] = datetime.utcnow()
-    db.users.update_one({"email": email}, {"$set": updates})
+    normalized_email = normalize_email(email)
+    normalized_updates = dict(updates)
+    if "email" in normalized_updates:
+        normalized_updates["email"] = normalize_email(normalized_updates["email"])
+    normalized_updates["updated_at"] = datetime.utcnow()
+    db.users.update_one({"email": normalized_email}, {"$set": normalized_updates})
 
 
 def save_reset_token(email: str, token: str):
     db = get_db()
     db.password_resets.insert_one({
-        "email": email,
+        "email": normalize_email(email),
         "token": token,
         "created_at": datetime.utcnow(),
     })
@@ -79,9 +90,9 @@ def save_reset_token(email: str, token: str):
 
 def get_reset_token(email: str, token: str):
     db = get_db()
-    return db.password_resets.find_one({"email": email, "token": token})
+    return db.password_resets.find_one({"email": normalize_email(email), "token": token})
 
 
 def delete_reset_token(email: str):
     db = get_db()
-    db.password_resets.delete_many({"email": email})
+    db.password_resets.delete_many({"email": normalize_email(email)})
