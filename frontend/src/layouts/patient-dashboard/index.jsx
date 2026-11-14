@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Grid, Stack, TextField, Typography } from "@mui/material";
 import LinkOutlinedIcon from "@mui/icons-material/LinkOutlined";
-import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import RefreshOutlinedIcon from "@mui/icons-material/Refresh";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -128,19 +127,6 @@ export default function PatientDashboard() {
               </Card>
             </Grid>
 
-            <Grid item xs={12}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={2}>
-                    <Box>
-                      <Typography variant="h6" fontWeight={700}>Registrar mediciones</Typography>
-                      <Typography variant="body2" color="text.secondary">Sube las capturas de tu smartwatch para guardarlas en tu historial.</Typography>
-                    </Box>
-                    <Button variant="contained" href="/patient-capture" startIcon={<CloudUploadOutlinedIcon />}>Guardar experimentos</Button>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
           </Grid>
         )}
       </Box>
