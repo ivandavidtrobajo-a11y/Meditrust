@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Grid, Stack, TextField, Typography,
+  Dialog, DialogContent, DialogTitle, Grid, IconButton, Stack, TextField, Typography,
 } from "@mui/material";
 import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import PersonAddAlt1OutlinedIcon from "@mui/icons-material/PersonAddAlt1Outlined";
 import RefreshOutlinedIcon from "@mui/icons-material/Refresh";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
+import ZoomOutMapOutlinedIcon from "@mui/icons-material/ZoomOutMapOutlined";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import CaptureAnalysisPanel from "layouts/doctor-dashboard/CaptureAnalysisPanel";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -37,6 +40,8 @@ export default function DoctorDashboard() {
   const [captureLoading, setCaptureLoading] = useState("");
   const [captureImageUrls, setCaptureImageUrls] = useState({});
   const [captureImageLoading, setCaptureImageLoading] = useState("");
+  const [expandedImage, setExpandedImage] = useState(null);
+  const isMobile = useMediaQuery("(max-width:600px)");
   const captureImageUrlsRef = useRef({});
 
   const loadPatients = useCallback(async () => {
@@ -292,11 +297,41 @@ export default function DoctorDashboard() {
                                   </Stack>
                                   {captureImageUrls[capture.gridfs_id] && (
                                     <Box sx={{ backgroundColor: "action.hover", borderRadius: 1, p: 1 }}>
-                                      <img
+                                      <Box
+                                        component="img"
                                         src={captureImageUrls[capture.gridfs_id]}
                                         alt={capture.original_filename || "Captura del smartwatch"}
-                                        style={{ width: "100%", maxHeight: 360, objectFit: "contain", display: "block", borderRadius: 8 }}
+                                        onClick={() => setExpandedImage({
+                                          url: captureImageUrls[capture.gridfs_id],
+                                          name: capture.original_filename || "Captura del smartwatch",
+                                        })}
+                                        role="button"
+                                        tabIndex={0}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter" || event.key === " ") {
+                                            event.preventDefault();
+                                            setExpandedImage({
+                                              url: captureImageUrls[capture.gridfs_id],
+                                              name: capture.original_filename || "Captura del smartwatch",
+                                            });
+                                          }
+                                        }}
+                                        sx={{
+                                          width: "100%", maxHeight: 360, objectFit: "contain", display: "block",
+                                          borderRadius: 1, cursor: "zoom-in",
+                                        }}
                                       />
+                                      <Button
+                                        fullWidth size="small" variant="text"
+                                        startIcon={<ZoomOutMapOutlinedIcon />}
+                                        onClick={() => setExpandedImage({
+                                          url: captureImageUrls[capture.gridfs_id],
+                                          name: capture.original_filename || "Captura del smartwatch",
+                                        })}
+                                        sx={{ mt: 0.5 }}
+                                      >
+                                        Ampliar imagen
+                                      </Button>
                                     </Box>
                                   )}
                                 </Box>
@@ -313,6 +348,45 @@ export default function DoctorDashboard() {
             </Grid>
           )}
       </Box>
+      <Dialog
+        open={Boolean(expandedImage)}
+        onClose={() => setExpandedImage(null)}
+        fullScreen={isMobile}
+        maxWidth="xl"
+        fullWidth
+        aria-labelledby="capture-image-dialog-title"
+        PaperProps={{
+          sx: {
+            bgcolor: "#111", color: "#fff",
+            ...(!isMobile ? { width: "96vw", maxWidth: "1600px", maxHeight: "96vh" } : {}),
+          },
+        }}
+      >
+        <DialogTitle id="capture-image-dialog-title" sx={{ display: "flex", alignItems: "center", gap: 1, pr: 1 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="subtitle1" fontWeight={700} noWrap>{expandedImage?.name || "Imagen original"}</Typography>
+            <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.7)" }}>
+              Vista ampliada · La imagen conserva sus proporciones originales
+            </Typography>
+          </Box>
+          <IconButton aria-label="Cerrar imagen ampliada" onClick={() => setExpandedImage(null)} sx={{ color: "#fff" }}>
+            <CloseOutlinedIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent
+          dividers
+          sx={{ display: "flex", alignItems: "center", justifyContent: "center", p: { xs: 1, sm: 2 }, bgcolor: "#080808" }}
+        >
+          {expandedImage?.url && (
+            <Box
+              component="img"
+              src={expandedImage.url}
+              alt={expandedImage.name || "Captura original del smartwatch"}
+              sx={{ display: "block", maxWidth: "100%", maxHeight: isMobile ? "calc(100dvh - 110px)" : "calc(96vh - 110px)", width: "auto", height: "auto", objectFit: "contain" }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
       <Footer />
     </DashboardLayout>
   );
