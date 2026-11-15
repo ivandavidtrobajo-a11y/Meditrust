@@ -32,8 +32,14 @@ const buttonText = {
     padding: `${pxToRem(10)} ${pxToRem(24)}`,
 
     "&:hover": {
-      backgroundColor: transparent.main,
+      color: text.focus,
+      backgroundColor: "rgba(33, 158, 154, 0.06)",
       boxShadow: "none",
+    },
+
+    "&:focus-visible": {
+      outline: `2px solid ${info.main}`,
+      outlineOffset: 2,
     },
 
     "&:focus": {
