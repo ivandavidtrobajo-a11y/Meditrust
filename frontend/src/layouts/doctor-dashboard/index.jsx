@@ -274,27 +274,33 @@ export default function DoctorDashboard() {
                                   {capture.size_bytes ? ` · ${Math.round(capture.size_bytes / 1024)} KB` : ""}
                                 </Typography>
                                 {capture.notes && <Typography variant="caption" display="block">{capture.notes}</Typography>}
+                                <Box mt={1.5} mb={2} p={1.5} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2 }}>
+                                  <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={1} mb={1}>
+                                    <Box>
+                                      <Typography variant="subtitle2" fontWeight={700}>Imagen original</Typography>
+                                      <Typography variant="caption" color="text.secondary">Evidencia visual asociada a esta captura</Typography>
+                                    </Box>
+                                    <Button
+                                      size="small"
+                                      variant={captureImageUrls[capture.gridfs_id] ? "text" : "outlined"}
+                                      disabled={captureImageLoading === capture.gridfs_id}
+                                      onClick={() => toggleCaptureImage(capture)}
+                                      startIcon={captureImageLoading === capture.gridfs_id ? <CircularProgress size={16} /> : <ImageOutlinedIcon />}
+                                    >
+                                      {captureImageLoading === capture.gridfs_id ? "Cargando imagen..." : captureImageUrls[capture.gridfs_id] ? "Ocultar imagen" : "Ver imagen original"}
+                                    </Button>
+                                  </Stack>
+                                  {captureImageUrls[capture.gridfs_id] && (
+                                    <Box sx={{ backgroundColor: "action.hover", borderRadius: 1, p: 1 }}>
+                                      <img
+                                        src={captureImageUrls[capture.gridfs_id]}
+                                        alt={capture.original_filename || "Captura del smartwatch"}
+                                        style={{ width: "100%", maxHeight: 360, objectFit: "contain", display: "block", borderRadius: 8 }}
+                                      />
+                                    </Box>
+                                  )}
+                                </Box>
                                 <CaptureAnalysisPanel patientId={patient.patient_id} capture={capture} onCaptureUpdated={syncCapture} />
-                                {captureImageUrls[capture.gridfs_id] && (
-                                  <Box mt={1}>
-                                    <img
-                                      src={captureImageUrls[capture.gridfs_id]}
-                                      alt={capture.original_filename || "Captura del smartwatch"}
-                                      style={{ width: "100%", maxHeight: 260, objectFit: "contain", display: "block", background: "#f5f5f5", borderRadius: 8 }}
-                                    />
-                                  </Box>
-                                )}
-                                <Button
-                                  fullWidth
-                                  size="small"
-                                  sx={{ mt: 1 }}
-                                  variant={captureImageUrls[capture.gridfs_id] ? "text" : "outlined"}
-                                  disabled={captureImageLoading === capture.gridfs_id}
-                                  onClick={() => toggleCaptureImage(capture)}
-                                  startIcon={captureImageLoading === capture.gridfs_id ? <CircularProgress size={16} /> : <ImageOutlinedIcon />}
-                                >
-                                  {captureImageLoading === capture.gridfs_id ? "Cargando imagen..." : captureImageUrls[capture.gridfs_id] ? "Ocultar imagen" : "Ver imagen original"}
-                                </Button>
                               </Box>
                             )) : <Typography variant="body2" color="text.secondary">Esta paciente todavía no ha subido capturas.</Typography>}
                           </Box>
