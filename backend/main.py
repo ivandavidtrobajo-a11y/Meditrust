@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -47,6 +47,7 @@ except Exception as e:
     logging.error(f"Error inicializando Neo4j: {e}")
 
 app = FastAPI()
+frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
 
 security = HTTPBearer()
 
@@ -532,6 +533,9 @@ def password_reset(request: AuthRequest):
 
 @app.get("/")
 def root():
+    index_file = frontend_build / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
     return {"status": "API funcionando"}
 
 
@@ -1276,13 +1280,16 @@ def _process_question_task(task_id: str, question: str, model: str = None):
         TASKS[task_id]["error"] = str(e)
 
 
-# Mount the frontend only after API routes so it cannot shadow /health or /patient-captures.
-frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
-if frontend_build.exists():
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="frontend")
-    logging.info("Frontend static files mounted from %s", frontend_build)
-
-
-# Flujo clínico: asignaciones médico-paciente y datos del embarazo.
+# Register the clinical API before the SPA fallback so API paths are never shadowed.
 app.include_router(clinical_workflow_router)
+
+
+# Serve built frontend assets and let React Router resolve direct navigation/refreshes.
+if (frontend_build / "index.html").is_file():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_frontend(full_path: str):
+        build_root = frontend_build.resolve()
+        requested_file = (build_root / full_path).resolve()
+        if build_root in requested_file.parents and requested_file.is_file():
+            return FileResponse(requested_file)
+        return FileResponse(build_root / "index.html")
