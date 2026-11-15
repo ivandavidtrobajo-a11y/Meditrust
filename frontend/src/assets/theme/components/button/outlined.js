@@ -20,19 +20,37 @@ import typography from "assets/theme/base/typography";
 // Material Dashboard 2 React Helper Functions
 import pxToRem from "assets/theme/functions/pxToRem";
 
-const { transparent, light, info, secondary } = colors;
+const { transparent, text, info, secondary, error } = colors;
 const { size } = typography;
 
 const outlined = {
   base: {
     minHeight: pxToRem(40),
-    color: light.main,
-    borderColor: light.main,
+    color: text.main,
+    borderColor: info.main,
     padding: `${pxToRem(10)} ${pxToRem(24)}`,
 
     "&:hover": {
-      opacity: 0.75,
-      backgroundColor: transparent.main,
+      opacity: 1,
+      color: text.focus,
+      borderColor: info.focus,
+      backgroundColor: "rgba(33, 158, 154, 0.06)",
+    },
+
+    "&:focus-visible": {
+      outline: `2px solid ${info.main}`,
+      outlineOffset: 2,
+    },
+
+    "&.MuiButton-colorError": {
+      color: error.main,
+      borderColor: error.main,
+    },
+
+    "&.MuiButton-colorError:hover": {
+      color: error.focus,
+      borderColor: error.focus,
+      backgroundColor: "rgba(198, 83, 83, 0.06)",
     },
 
     "& .material-icon, .material-icons-round, svg": {
