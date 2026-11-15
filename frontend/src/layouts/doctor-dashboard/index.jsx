@@ -102,6 +102,16 @@ export default function DoctorDashboard() {
     finally { setCaptureLoading(""); }
   };
 
+  const syncCapture = useCallback((patientId, updatedCapture) => {
+    if (!updatedCapture) return;
+    setCapturesByPatient((previous) => ({
+      ...previous,
+      [patientId]: (previous[patientId] || []).map((item) => (
+        item.gridfs_id === updatedCapture.gridfs_id ? { ...item, ...updatedCapture } : item
+      )),
+    }));
+  }, []);
+
   const toggleCaptureImage = async (capture) => {
     const imageId = capture.gridfs_id;
     if (captureImageUrls[imageId]) {
@@ -264,7 +274,7 @@ export default function DoctorDashboard() {
                                   {capture.size_bytes ? ` · ${Math.round(capture.size_bytes / 1024)} KB` : ""}
                                 </Typography>
                                 {capture.notes && <Typography variant="caption" display="block">{capture.notes}</Typography>}
-                                <CaptureAnalysisPanel patientId={patient.patient_id} capture={capture} />
+                                <CaptureAnalysisPanel patientId={patient.patient_id} capture={capture} onCaptureUpdated={syncCapture} />
                                 {captureImageUrls[capture.gridfs_id] && (
                                   <Box mt={1}>
                                     <img
