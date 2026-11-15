@@ -347,7 +347,7 @@ const handleStopIA = async () => {
 
       setIsUploading(false);
       isUploadingRef.current = false;
-      setUploadProgress(succeeded ? 100 : uploadProgress);
+      setUploadProgress((currentProgress) => (succeeded ? 100 : currentProgress));
       setUploadStatus(succeeded ? "success" : "error");
       setUploadMessage(String(serverMessage));
       setMessages((prev) => [...prev, {
