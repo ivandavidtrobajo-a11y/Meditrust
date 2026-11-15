@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Grid, Stack, TextField, Typography } from "@mui/material";
 import LinkOutlinedIcon from "@mui/icons-material/LinkOutlined";
 import RefreshOutlinedIcon from "@mui/icons-material/Refresh";
@@ -27,9 +27,13 @@ export default function PatientDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const requestInFlightRef = useRef(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true); setError("");
+  const loadData = useCallback(async ({ silent = false } = {}) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    if (!silent) setLoading(true);
+    setError("");
     try {
       const [pregnancyData, relationshipData] = await Promise.all([
         api("/patient/pregnancy"),
@@ -38,10 +42,24 @@ export default function PatientDashboard() {
       setPregnancy(pregnancyData.pregnancy || null);
       setDoctors(relationshipData.doctors || []);
     } catch (err) { setError(err.message || "No se pudo cargar tu información."); }
-    finally { setLoading(false); }
+    finally {
+      requestInFlightRef.current = false;
+      if (!silent) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadData({ silent: true });
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [loadData]);
 
   const redeemCode = async (event) => {
     event.preventDefault();
