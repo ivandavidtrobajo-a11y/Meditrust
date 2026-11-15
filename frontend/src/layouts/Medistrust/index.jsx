@@ -4,6 +4,7 @@ import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
 import Button from "@mui/material/Button";
+import LinearProgress from "@mui/material/LinearProgress";
 import TextField from "@mui/material/TextField";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
@@ -47,6 +48,12 @@ function Medistrust() {
   const pollIntervalRef = useRef(null);
   const isSendingRef = useRef(false);
   const processedTasksRef = useRef(new Set());
+  const isUploadingRef = useRef(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState("idle");
+  const [uploadFileName, setUploadFileName] = useState("");
+  const [uploadMessage, setUploadMessage] = useState("");
 
   // Modelos disponibles y preferencia guardada por usuario/conversación.
   const [models, setModels] = useState({ hf: [], ollama: [], gemini: [] });
@@ -294,23 +301,89 @@ const handleStopIA = async () => {
   // --------------------------
   //  File upload
   // --------------------------
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = (e) => {
+    const inputElement = e.target;
+    const file = inputElement.files?.[0];
     if (!file) return;
+    inputElement.value = "";
+
+    if (isUploadingRef.current) return;
+    isUploadingRef.current = true;
+
     const formData = new FormData();
     formData.append("file", file);
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadStatus("uploading");
+    setUploadFileName(file.name);
+    setUploadMessage("Preparando transferencia...");
 
-    try {
-      const resp = await fetch(`${API_BASE}/upload/`, { method: "POST", headers: authHeaders(), body: formData });
-      const data = await resp.json();
-      const msg = data.message || data.detail || `Archivo subido: ${file.name}`;
-      setMessages((prev) => [...prev, { text: msg, sender: "system" }]);
-      setHistory((prev) => [...prev, `📁 Archivo subido: ${file.name}`]);
-    } catch (err) {
-      console.error("Upload error:", err);
-      setMessages((prev) => [...prev, { text: "Error al subir archivo.", sender: "system" }]);
-      setHistory((prev) => [...prev, "⚠️ Error al subir archivo."]);
-    }
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/upload/`);
+    xhr.setRequestHeader("Authorization", `Bearer ${localStorage.getItem("token") || ""}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const percentage = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      setUploadProgress(percentage);
+      if (percentage >= 100) {
+        setUploadStatus("processing");
+        setUploadMessage("Archivo enviado. Esperando la respuesta del servidor...");
+      }
+    };
+
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch (error) {
+        data = { detail: "El servidor devolvió una respuesta que no se pudo interpretar." };
+      }
+
+      const succeeded = xhr.status >= 200 && xhr.status < 300;
+      const serverMessage = data.message || data.detail || (
+        succeeded ? `Archivo recibido: ${file.name}` : `Error HTTP ${xhr.status}`
+      );
+
+      setIsUploading(false);
+      isUploadingRef.current = false;
+      setUploadProgress(succeeded ? 100 : uploadProgress);
+      setUploadStatus(succeeded ? "success" : "error");
+      setUploadMessage(String(serverMessage));
+      setMessages((prev) => [...prev, {
+        text: succeeded ? String(serverMessage) : `No se pudo subir el archivo (HTTP ${xhr.status}): ${serverMessage}`,
+        sender: "system",
+      }]);
+
+      if (succeeded) {
+        setHistory((prev) => [...prev, `📁 Archivo subido: ${file.name}`]);
+      } else {
+        setHistory((prev) => [...prev, `⚠️ Error al subir ${file.name} (HTTP ${xhr.status}).`]);
+      }
+    };
+
+    xhr.onerror = () => {
+      const message = "No se pudo conectar con el servidor durante la subida.";
+      console.error("Upload network error:", xhr.status, xhr.statusText);
+      setIsUploading(false);
+      isUploadingRef.current = false;
+      setUploadStatus("error");
+      setUploadMessage(message);
+      setMessages((prev) => [...prev, { text: message, sender: "system" }]);
+      setHistory((prev) => [...prev, `⚠️ Error al subir ${file.name}.`]);
+    };
+
+    xhr.onabort = () => {
+      const message = "La subida del archivo fue interrumpida.";
+      setIsUploading(false);
+      isUploadingRef.current = false;
+      setUploadStatus("error");
+      setUploadMessage(message);
+      setMessages((prev) => [...prev, { text: message, sender: "system" }]);
+      setHistory((prev) => [...prev, `⚠️ Subida interrumpida: ${file.name}.`]);
+    };
+
+    xhr.send(formData);
   };
 
   // --------------------------
@@ -520,10 +593,17 @@ const handleStopIA = async () => {
                 variant="contained"
                 color="info"
                 component="label"
+                disabled={isUploading}
                 startIcon={<Icon>upload_file</Icon>}
               >
-                Subir consultas (Excel)
-                <input hidden type="file" accept=".xls,.xlsx" onChange={handleFileUpload} />
+                {isUploading ? "Subiendo Excel..." : "Subir consultas (Excel)"}
+                <input
+                  hidden
+                  type="file"
+                  accept=".xls,.xlsx"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                />
               </Button>
 
               <Button
@@ -535,6 +615,36 @@ const handleStopIA = async () => {
                 Listar documentos
               </Button>
             </MDBox>
+
+            {uploadStatus !== "idle" && (
+              <MDBox sx={{ width: "100%", maxWidth: 520, mx: "auto", mt: 0.5, px: 1 }}>
+                <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={0.5} gap={2}>
+                  <MDTypography variant="caption" sx={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {uploadFileName}
+                  </MDTypography>
+                  <MDTypography variant="caption" sx={{ whiteSpace: "nowrap", color: uploadStatus === "error" ? "error.main" : "text.secondary" }}>
+                    {uploadStatus === "uploading" && `Subiendo · ${uploadProgress}%`}
+                    {uploadStatus === "processing" && "Enviado · esperando servidor"}
+                    {uploadStatus === "success" && "Completado · 100%"}
+                    {uploadStatus === "error" && `Error · ${uploadProgress}%`}
+                  </MDTypography>
+                </MDBox>
+                <LinearProgress
+                  variant="determinate"
+                  value={uploadProgress}
+                  color={uploadStatus === "error" ? "error" : "info"}
+                  sx={{ height: 5, borderRadius: 4 }}
+                />
+                {uploadMessage && (
+                  <MDTypography
+                    variant="caption"
+                    sx={{ display: "block", mt: 0.5, color: uploadStatus === "error" ? "error.main" : "text.secondary" }}
+                  >
+                    {uploadMessage}
+                  </MDTypography>
+                )}
+              </MDBox>
+            )}
 
             <MDTypography variant="caption" color="text" textAlign="center">
               {currentTaskId ? `Task: ${currentTaskId}` : ""}
