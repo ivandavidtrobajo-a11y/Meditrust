@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Chip, CircularProgress, Divider, MenuItem, Stack, TextField, Typography } from "@mui/material";
 
 const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
@@ -35,11 +35,13 @@ function Reviews({ patientId, gridfsId }) {
   ));
 }
 
-export default function CaptureAnalysisPanel({ patientId, capture }) {
+export default function CaptureAnalysisPanel({ patientId, capture, onCaptureUpdated }) {
   const [models, setModels] = useState([]);
   const [selected, setSelected] = useState("");
   const [runs, setRuns] = useState([]);
+  const [captureStatus, setCaptureStatus] = useState(capture.analysis_status || "");
   const [loading, setLoading] = useState(false);
+  const refreshInFlightRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -48,16 +50,43 @@ export default function CaptureAnalysisPanel({ patientId, capture }) {
 
   const selectedModel = useMemo(() => models.find((item) => `${item.provider}:${item.id}` === selected), [models, selected]);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     setLoading(true);
     try {
-      const result = await api(`/patient-captures/${encodeURIComponent(patientId)}/analysis-history?gridfs_id=${encodeURIComponent(capture.gridfs_id)}`);
+      const [result, captureResult] = await Promise.all([
+        api(`/patient-captures/${encodeURIComponent(patientId)}/analysis-history?gridfs_id=${encodeURIComponent(capture.gridfs_id)}`),
+        api(`/patient-captures/${encodeURIComponent(patientId)}`),
+      ]);
       setRuns(result.runs || []);
+      const currentCapture = (captureResult.captures || []).find(
+        (item) => item.gridfs_id === capture.gridfs_id
+      );
+      if (currentCapture) {
+        setCaptureStatus(currentCapture.analysis_status || "");
+        onCaptureUpdated?.(patientId, currentCapture);
+      }
       const latest = (result.runs || []).find((run) => run.readings);
       if (latest) setCorrected(JSON.stringify(latest.readings, null, 2));
     } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
-  };
+    finally {
+      refreshInFlightRef.current = false;
+      setLoading(false);
+    }
+  }, [patientId, capture.gridfs_id, onCaptureUpdated]);
+
+  useEffect(() => {
+    setCaptureStatus(capture.analysis_status || "");
+  }, [capture.analysis_status]);
+
+  const analysisPending = ["queued", "processing", "retrying"].includes(captureStatus);
+
+  useEffect(() => {
+    if (!analysisPending) return undefined;
+    const interval = window.setInterval(() => { refresh(); }, 4000);
+    return () => window.clearInterval(interval);
+  }, [analysisPending, refresh]);
 
   useEffect(() => {
     let active = true;
@@ -68,7 +97,7 @@ export default function CaptureAnalysisPanel({ patientId, capture }) {
     }).catch((err) => { if (active) setError(err.message); });
     refresh();
     return () => { active = false; };
-  }, [patientId, capture.gridfs_id]);
+  }, [patientId, capture.gridfs_id, refresh]);
 
   const reanalyze = async () => {
     if (!selectedModel) return;
@@ -77,6 +106,7 @@ export default function CaptureAnalysisPanel({ patientId, capture }) {
       await api(`/doctor/patient-captures/${encodeURIComponent(patientId)}/${encodeURIComponent(capture.gridfs_id)}/reanalyze`, {
         method: "POST", body: JSON.stringify({ provider: selectedModel.provider, model: selectedModel.id }),
       });
+      setCaptureStatus("queued");
       setNotice("Nueva ejecución añadida a la cola. Las ejecuciones anteriores se conservan.");
       await refresh();
     } catch (err) { setError(err.message); }
@@ -105,7 +135,7 @@ export default function CaptureAnalysisPanel({ patientId, capture }) {
   return (
     <Stack spacing={1} sx={{ mt: 1, p: 1.5, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-        <Chip size="small" label={statusText[capture.analysis_status] || capture.analysis_status || "Sin analizar"} color={capture.analysis_status === "needs_review" || capture.analysis_status === "analysis_failed" ? "warning" : "default"} />
+        <Chip size="small" label={statusText[captureStatus] || captureStatus || "Sin analizar"} color={captureStatus === "needs_review" || captureStatus === "analysis_failed" ? "warning" : "default"} />
         <Button size="small" onClick={refresh} disabled={loading}>{loading ? "Actualizando..." : "Actualizar historial"}</Button>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
