@@ -319,30 +319,22 @@ const handleStopIA = async () => {
     setUploadMessage("Preparando transferencia...");
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_BASE}/upload/`);
-    xhr.setRequestHeader("Authorization", `Bearer ${localStorage.getItem("token") || ""}`);
+    let uploadSettled = false;
 
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-      const percentage = Math.min(100, Math.round((event.loaded / event.total) * 100));
-      setUploadProgress(percentage);
-      if (percentage >= 100) {
-        setUploadStatus("processing");
-        setUploadMessage("Archivo enviado. Esperando la respuesta del servidor...");
-      }
-    };
+    const finishUpload = (status, responseText = "") => {
+      if (uploadSettled) return;
+      uploadSettled = true;
 
-    xhr.onload = () => {
       let data = {};
       try {
-        data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        data = responseText ? JSON.parse(responseText) : {};
       } catch (error) {
         data = { detail: "El servidor devolvió una respuesta que no se pudo interpretar." };
       }
 
-      const succeeded = xhr.status >= 200 && xhr.status < 300;
+      const succeeded = status >= 200 && status < 300;
       const serverMessage = data.message || data.detail || (
-        succeeded ? `Archivo recibido: ${file.name}` : `Error HTTP ${xhr.status}`
+        succeeded ? `Archivo recibido: ${file.name}` : `Error HTTP ${status || "sin respuesta"}`
       );
 
       setIsUploading(false);
@@ -351,36 +343,52 @@ const handleStopIA = async () => {
       setUploadStatus(succeeded ? "success" : "error");
       setUploadMessage(String(serverMessage));
       setMessages((prev) => [...prev, {
-        text: succeeded ? String(serverMessage) : `No se pudo subir el archivo (HTTP ${xhr.status}): ${serverMessage}`,
+        text: succeeded ? String(serverMessage) : `No se pudo subir el archivo (HTTP ${status || "sin respuesta"}): ${serverMessage}`,
         sender: "system",
       }]);
 
       if (succeeded) {
         setHistory((prev) => [...prev, `📁 Archivo subido: ${file.name}`]);
       } else {
-        setHistory((prev) => [...prev, `⚠️ Error al subir ${file.name} (HTTP ${xhr.status}).`]);
+        setHistory((prev) => [...prev, `⚠️ Error al subir ${file.name} (HTTP ${status || "sin respuesta"}).`]);
       }
     };
 
+    xhr.open("POST", `${API_BASE}/upload/`);
+    xhr.timeout = 15 * 60 * 1000;
+    xhr.setRequestHeader("Authorization", `Bearer ${localStorage.getItem("token") || ""}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const percentage = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      setUploadProgress(percentage);
+      if (percentage >= 100) {
+        setUploadStatus("processing");
+        setUploadMessage("Archivo enviado. El servidor está procesándolo...");
+      }
+    };
+
+    // readyState 4 permite cerrar el estado incluso si el navegador no dispara onload.
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === XMLHttpRequest.DONE) {
+        finishUpload(xhr.status, xhr.responseText);
+      }
+    };
+    xhr.onload = () => finishUpload(xhr.status, xhr.responseText);
+
     xhr.onerror = () => {
-      const message = "No se pudo conectar con el servidor durante la subida.";
       console.error("Upload network error:", xhr.status, xhr.statusText);
-      setIsUploading(false);
-      isUploadingRef.current = false;
-      setUploadStatus("error");
-      setUploadMessage(message);
-      setMessages((prev) => [...prev, { text: message, sender: "system" }]);
-      setHistory((prev) => [...prev, `⚠️ Error al subir ${file.name}.`]);
+      finishUpload(xhr.status, "");
+    };
+
+    xhr.ontimeout = () => {
+      finishUpload(0, JSON.stringify({
+        detail: "El servidor tardó más de 15 minutos en responder. Comprueba el historial antes de volver a subir el archivo para evitar duplicados.",
+      }));
     };
 
     xhr.onabort = () => {
-      const message = "La subida del archivo fue interrumpida.";
-      setIsUploading(false);
-      isUploadingRef.current = false;
-      setUploadStatus("error");
-      setUploadMessage(message);
-      setMessages((prev) => [...prev, { text: message, sender: "system" }]);
-      setHistory((prev) => [...prev, `⚠️ Subida interrumpida: ${file.name}.`]);
+      finishUpload(0, JSON.stringify({ detail: "La subida del archivo fue interrumpida." }));
     };
 
     xhr.send(formData);
