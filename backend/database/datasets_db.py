@@ -52,7 +52,7 @@ def list_document_nodes():
     db = get_db()
     res = list(db.documents.find({}, {"nombre": 1, "ruta": 1}))
     for r in res:
-        r["id"] = str(r["_id"])
+        r["id"] = str(r.pop("_id"))
     return res
 
 
