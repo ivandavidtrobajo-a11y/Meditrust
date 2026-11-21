@@ -53,13 +53,13 @@ function ReadingsGrid({ readings = {}, compact = false }) {
   );
 }
 
-function Reviews({ patientId, gridfsId }) {
+function Reviews({ patientId, gridfsId, refreshKey }) {
   const [reviews, setReviews] = useState([]);
   useEffect(() => {
     api(`/patient-captures/${encodeURIComponent(patientId)}/analysis-history?gridfs_id=${encodeURIComponent(gridfsId)}`)
       .then((result) => setReviews(result.reviews || []))
       .catch(() => setReviews([]));
-  }, [patientId, gridfsId]);
+  }, [patientId, gridfsId, refreshKey]);
   if (!reviews.length) return <Typography variant="body2" color="text.secondary">Todavía no hay revisiones médicas registradas.</Typography>;
   return (
     <Stack spacing={1}>
@@ -91,6 +91,7 @@ export default function CaptureAnalysisPanel({ patientId, capture, onCaptureUpda
   const [notice, setNotice] = useState("");
   const [corrected, setCorrected] = useState({});
   const [note, setNote] = useState("");
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
 
   const selectedModel = useMemo(() => models.find((item) => `${item.provider}:${item.id}` === selected), [models, selected]);
 
@@ -167,9 +168,9 @@ export default function CaptureAnalysisPanel({ patientId, capture, onCaptureUpda
       });
       setCaptureStatus(result.status || "reviewed");
       setNotice("Revisión médica guardada. Los valores corregidos se reflejarán en el historial de la paciente.");
-      // El guardado ya fue confirmado por el servidor. La actualización del historial
-      // se realiza aparte para que un fallo secundario de consulta no oculte el éxito.
-      void refresh();
+      // Actualiza únicamente el historial de revisiones. Evita volver a descargar
+      // todas las ejecuciones y capturas después de guardar, algo costoso en móviles.
+      setReviewRefreshKey((previous) => previous + 1);
     } catch (err) {
       setError(err.message || "No se pudo guardar la revisión médica.");
     } finally {
@@ -240,7 +241,7 @@ export default function CaptureAnalysisPanel({ patientId, capture, onCaptureUpda
         <AccordionSummary expandIcon={<ExpandMoreOutlinedIcon />}>
           <Typography variant="subtitle2" fontWeight={700}>Historial de revisiones médicas</Typography>
         </AccordionSummary>
-        <AccordionDetails><Reviews patientId={patientId} gridfsId={capture.gridfs_id} /></AccordionDetails>
+        <AccordionDetails><Reviews patientId={patientId} gridfsId={capture.gridfs_id} refreshKey={reviewRefreshKey} /></AccordionDetails>
       </Accordion>
 
       <Accordion disableGutters elevation={0} variant="outlined">
