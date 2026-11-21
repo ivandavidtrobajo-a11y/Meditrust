@@ -31,9 +31,10 @@ function Breadcrumbs({ icon, title, route, light }) {
   const routes = route.slice(0, -1);
 
   return (
-    <MDBox mr={{ xs: 0, xl: 8 }}>
+    <MDBox mr={{ xs: 0, xl: 8 }} sx={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
       <MuiBreadcrumbs
         sx={{
+          display: { xs: "none", sm: "flex" },
           "& .MuiBreadcrumbs-separator": {
             color: ({ palette: { white, grey } }) => (light ? white.main : grey[600]),
           },
@@ -45,7 +46,7 @@ function Breadcrumbs({ icon, title, route, light }) {
             variant="body2"
             color={light ? "white" : "dark"}
             opacity={light ? 0.8 : 0.5}
-            sx={{ lineHeight: 0 }}
+            sx={{ lineHeight: 1.2 }}
           >
             <Icon>{icon}</Icon>
           </MDTypography>
@@ -59,7 +60,7 @@ function Breadcrumbs({ icon, title, route, light }) {
               textTransform="capitalize"
               color={light ? "white" : "dark"}
               opacity={light ? 0.8 : 0.5}
-              sx={{ lineHeight: 0 }}
+              sx={{ lineHeight: 1.2 }}
             >
               {el}
             </MDTypography>
@@ -70,7 +71,7 @@ function Breadcrumbs({ icon, title, route, light }) {
           fontWeight="regular"
           textTransform="capitalize"
           color={light ? "white" : "dark"}
-          sx={{ lineHeight: 0 }}
+          sx={{ lineHeight: 1.2 }}
         >
           {title.replace("-", " ")}
         </MDTypography>
@@ -81,6 +82,13 @@ function Breadcrumbs({ icon, title, route, light }) {
         variant="h6"
         color={light ? "white" : "dark"}
         noWrap
+        sx={{
+          fontSize: { xs: "0.9rem", sm: "1.25rem" },
+          lineHeight: 1.25,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          maxWidth: "100%",
+        }}
       >
         {title.replace("-", " ")}
       </MDTypography>
