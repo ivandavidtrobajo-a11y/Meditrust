@@ -149,6 +149,11 @@ export default function CaptureAnalysisPanel({ patientId, capture, onCaptureUpda
   };
 
   const saveReview = async () => {
+    if (busy) return;
+    if (!patientId || !capture?.gridfs_id) {
+      setError("No se pudo identificar la captura que se desea revisar.");
+      return;
+    }
     const values = { ...corrected };
     readingFields.forEach(({ key }) => {
       const value = values[key];
@@ -157,13 +162,19 @@ export default function CaptureAnalysisPanel({ patientId, capture, onCaptureUpda
     });
     setBusy(true); setError(""); setNotice("");
     try {
-      await api(`/doctor/patient-captures/${encodeURIComponent(patientId)}/${encodeURIComponent(capture.gridfs_id)}/review`, {
+      const result = await api(`/doctor/patient-captures/${encodeURIComponent(patientId)}/${encodeURIComponent(capture.gridfs_id)}/review`, {
         method: "PUT", body: JSON.stringify({ corrected_readings: values, note }),
       });
+      setCaptureStatus(result.status || "reviewed");
       setNotice("Revisión médica guardada. Los valores corregidos se reflejarán en el historial de la paciente.");
-      await refresh();
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+      // El guardado ya fue confirmado por el servidor. La actualización del historial
+      // se realiza aparte para que un fallo secundario de consulta no oculte el éxito.
+      void refresh();
+    } catch (err) {
+      setError(err.message || "No se pudo guardar la revisión médica.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const updateReading = (key, value) => setCorrected((previous) => ({ ...previous, [key]: value }));
