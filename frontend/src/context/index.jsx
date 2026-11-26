@@ -54,7 +54,7 @@ const AuthContextProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true;
 
-    const synchronizeSession = () => {
+    const synchronizeSession = (redirectWhenMissing = false) => {
       const token = localStorage.getItem("token");
       const sequence = ++validationSequence.current;
 
@@ -62,7 +62,7 @@ const AuthContextProvider = ({ children }) => {
       setUser(null);
       if (!token) {
         setIsLoading(false);
-        navigate("/auth/login", { replace: true });
+        if (redirectWhenMissing) navigate("/auth/login", { replace: true });
         return;
       }
 
@@ -87,7 +87,7 @@ const AuthContextProvider = ({ children }) => {
 
     const onStorage = (event) => {
       if (event.storageArea === localStorage && (event.key === "token" || event.key === null)) {
-        synchronizeSession();
+        synchronizeSession(true);
       }
     };
     const onSessionInvalid = () => logout();
