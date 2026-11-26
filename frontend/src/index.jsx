@@ -6,7 +6,11 @@ import App from "@/App";
 import { AuthContextProvider, MaterialUIControllerProvider } from "@/context";
 import { setupAxiosInterceptors } from "./services/interceptor";
 
-// Register authentication interceptors before AuthContext performs its initial /me request.
+// A fresh application load must always require an explicit login.
+// Remove any token left by a previous page/browser session before AuthContext mounts.
+localStorage.removeItem("token");
+
+// Register authentication interceptors before any authenticated request can run.
 setupAxiosInterceptors();
 
 const rootElement = document.getElementById("root");
