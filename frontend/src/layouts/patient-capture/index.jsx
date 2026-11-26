@@ -278,7 +278,11 @@ export default function PatientCapture() {
                   </Alert>
                 )}
                 {relationshipStatus === "none" && (
-                  <Alert severity="warning" sx={{ mb: 2 }}>
+                  <Alert
+                    severity="warning"
+                    sx={{ mb: 2 }}
+                    action={<Button color="inherit" size="small" onClick={loadRelationships}>Comprobar de nuevo</Button>}
+                  >
                     Para enviar nuevas capturas necesitas tener al menos un médico vinculado con una asignación activa.
                     Puedes vincular tu cuenta desde «Mi embarazo» utilizando el código que te proporcione tu médico.
                   </Alert>
