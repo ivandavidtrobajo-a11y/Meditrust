@@ -35,7 +35,7 @@ from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
-from services.authorization import require_role, require_admin, require_patient_access, require_active_user
+from services.authorization import require_role, require_admin, require_patient_access, require_active_user, require_active_patient_assignment
 from services.clinical_workflow import router as clinical_workflow_router
 from services.capture_analysis import manager as capture_analysis_manager
 
@@ -568,6 +568,9 @@ async def upload_patient_captures(
     if not files or len(files) > 5:
         raise HTTPException(status_code=400, detail="Selecciona entre 1 y 5 imágenes por envío.")
 
+    database = get_db()
+    require_active_patient_assignment(patient_id, database)
+
     max_bytes = 8 * 1024 * 1024
     allowed_formats = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
     validated = []
@@ -597,7 +600,9 @@ async def upload_patient_captures(
             "size": len(content),
         })
 
-    database = get_db()
+    # Revalidar justo antes de persistir: la vinculación pudo desactivarse
+    # mientras se validaban los archivos.
+    require_active_patient_assignment(patient_id, database)
     bucket = GridFSBucket(database, bucket_name="patient_capture_images")
     records = database["patient_capture_records"]
     uploaded_at = datetime.now(timezone.utc)
