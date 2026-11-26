@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "context";
 import {
   Alert, Card, CardContent, Chip, CircularProgress, Divider, Grid,
@@ -32,7 +32,40 @@ export default function PatientCapture() {
   const [historyError, setHistoryError] = useState("");
   const [imageUrls, setImageUrls] = useState({});
   const [imageLoading, setImageLoading] = useState("");
+  const [relationshipStatus, setRelationshipStatus] = useState("loading");
+  const [relationshipError, setRelationshipError] = useState("");
   const imageUrlsRef = useRef({});
+
+  const canUpload = relationshipStatus === "active";
+
+  const loadRelationships = useCallback(async () => {
+    setRelationshipStatus("loading");
+    setRelationshipError("");
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setRelationshipStatus("error");
+      setRelationshipError("Tu sesión no contiene un token. Inicia sesión de nuevo.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/patient/relationships`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.detail || `La API respondió con el estado ${response.status}.`);
+      }
+      setRelationshipStatus(Array.isArray(body.doctors) && body.doctors.length > 0 ? "active" : "none");
+    } catch (err) {
+      setRelationshipStatus("error");
+      setRelationshipError(err.message || "No se pudo comprobar tu vinculación médica.");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRelationships();
+  }, [loadRelationships]);
 
   useEffect(() => {
     filesRef.current = files;
@@ -48,6 +81,11 @@ export default function PatientCapture() {
   }, []);
 
   const addFiles = (event) => {
+    if (!canUpload) {
+      setError("Necesitas tener un médico vinculado activo para subir nuevas capturas.");
+      event.target.value = "";
+      return;
+    }
     const incoming = Array.from(event.target.files || []);
     setError("");
     setMessage(null);
@@ -160,6 +198,15 @@ export default function PatientCapture() {
     setMessage(null);
     setUploaded([]);
 
+    if (!canUpload) {
+      setError(
+        relationshipStatus === "none"
+          ? "Necesitas tener al menos un médico vinculado activo para subir nuevas capturas."
+          : "No se ha podido comprobar tu vinculación médica. Inténtalo de nuevo."
+      );
+      return;
+    }
+
     if (!patientId) {
       setError("No se pudo identificar tu cuenta. Cierra sesión e inicia sesión de nuevo.");
       return;
@@ -225,6 +272,32 @@ export default function PatientCapture() {
 
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
                 {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
+                {relationshipStatus === "loading" && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Comprobando si tienes un médico vinculado...
+                  </Alert>
+                )}
+                {relationshipStatus === "none" && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    Para enviar nuevas capturas necesitas tener al menos un médico vinculado con una asignación activa.
+                    Puedes vincular tu cuenta desde «Mi embarazo» utilizando el código que te proporcione tu médico.
+                  </Alert>
+                )}
+                {relationshipStatus === "error" && (
+                  <Alert
+                    severity="error"
+                    sx={{ mb: 2 }}
+                    action={<Button color="inherit" size="small" onClick={loadRelationships}>Reintentar</Button>}
+                  >
+                    No se pudo verificar tu vinculación médica. Por seguridad, la subida permanece deshabilitada.
+                    {relationshipError ? ` ${relationshipError}` : ""}
+                  </Alert>
+                )}
+                {canUpload && (
+                  <Alert severity="success" sx={{ mb: 2 }}>
+                    Tienes un médico vinculado activo. Puedes enviar nuevas capturas.
+                  </Alert>
+                )}
 
                 <form onSubmit={submit}>
                   <Grid container spacing={2}>
@@ -236,7 +309,7 @@ export default function PatientCapture() {
                         label="Nota de la captura (opcional)"
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        fullWidth multiline minRows={2} inputProps={{ maxLength: 1000 }}
+                        fullWidth multiline minRows={2} disabled={!canUpload} inputProps={{ maxLength: 1000 }}
                       />
                     </Grid>
                   </Grid>
@@ -247,6 +320,7 @@ export default function PatientCapture() {
                     accept="image/jpeg,image/png,image/webp"
                     multiple
                     hidden
+                    disabled={!canUpload}
                     onChange={addFiles}
                   />
 
@@ -255,6 +329,7 @@ export default function PatientCapture() {
                     variant="outlined"
                     startIcon={<CloudUploadOutlinedIcon />}
                     onClick={() => inputRef.current?.click()}
+                    disabled={!canUpload || loading}
                     sx={{ mt: 3, py: 2, borderStyle: "dashed", borderWidth: 2 }}
                   >
                     Seleccionar imágenes desde el móvil o el ordenador
@@ -295,7 +370,7 @@ export default function PatientCapture() {
                     type="submit"
                     variant="contained"
                     fullWidth
-                    disabled={loading}
+                    disabled={!canUpload || loading}
                     startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <CloudUploadOutlinedIcon />}
                     sx={{ mt: 3, py: 1.5 }}
                   >
