@@ -33,7 +33,7 @@ const AuthContextProvider = ({ children }) => {
 
   const logout = useCallback(() => {
     validationSequence.current += 1;
-    localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
     setUser(null);
     setIsLoading(false);
     navigate("/auth/login", { replace: true });
@@ -43,7 +43,7 @@ const AuthContextProvider = ({ children }) => {
     const currentUser = normalizeUser(responseUser);
     if (!token || !currentUser) throw new Error("La respuesta de autenticación no contiene token y rol válidos.");
     validationSequence.current += 1;
-    localStorage.setItem("token", token);
+    sessionStorage.setItem("token", token);
     setUser(currentUser);
     setIsLoading(false);
     navigate(getRoleHomePath(currentUser.role), { replace: true });
@@ -55,7 +55,7 @@ const AuthContextProvider = ({ children }) => {
     let mounted = true;
 
     const synchronizeSession = (redirectWhenMissing = false) => {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       const sequence = ++validationSequence.current;
 
       // Never keep showing the previous account while the new token is checked.
@@ -69,7 +69,7 @@ const AuthContextProvider = ({ children }) => {
       setIsLoading(true);
       AuthService.getProfile()
         .then((response) => {
-          if (!mounted || sequence !== validationSequence.current || localStorage.getItem("token") !== token) return;
+          if (!mounted || sequence !== validationSequence.current || sessionStorage.getItem("token") !== token) return;
           const currentUser = normalizeUser(response);
           if (!currentUser) throw new Error("La API no devolvió una identidad válida.");
           setUser(currentUser);
@@ -77,8 +77,8 @@ const AuthContextProvider = ({ children }) => {
           navigate(getRoleHomePath(currentUser.role), { replace: true });
         })
         .catch(() => {
-          if (!mounted || sequence !== validationSequence.current || localStorage.getItem("token") !== token) return;
-          localStorage.removeItem("token");
+          if (!mounted || sequence !== validationSequence.current || sessionStorage.getItem("token") !== token) return;
+          sessionStorage.removeItem("token");
           setUser(null);
           setIsLoading(false);
           navigate("/auth/login", { replace: true });
