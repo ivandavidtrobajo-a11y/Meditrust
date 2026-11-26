@@ -37,6 +37,23 @@ def require_patient_access(current_user: dict, patient_id: str, database=None) -
     raise HTTPException(status_code=403, detail="Este perfil no tiene acceso a datos clínicos de pacientes.")
 
 
+
+def require_active_patient_assignment(patient_id: str, database) -> None:
+    """Exige que la paciente tenga al menos una vinculación médica activa."""
+    assignment = database["doctor_patient_assignments"].find_one(
+        {"patient_id": str(patient_id), "status": "active"},
+        {"_id": 1},
+    )
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Para subir nuevas capturas necesitas tener al menos un médico "
+                "vinculado con una asignación activa. Vincula tu cuenta con el "
+                "código proporcionado por tu médico."
+            ),
+        )
+
 def require_active_user(current_user: dict) -> dict:
     """Rechaza cuentas desactivadas; los registros antiguos sin is_active siguen activos."""
     if current_user.get("is_active", True) is False:
