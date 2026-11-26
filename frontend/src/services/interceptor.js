@@ -2,7 +2,7 @@ import HttpService from "./htttp.service";
 
 export const setupAxiosInterceptors = () => {
   const onRequestSuccess = (config) => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     config.headers = config.headers || {};
 
     if (token) {
@@ -24,7 +24,7 @@ export const setupAxiosInterceptors = () => {
   const onResponseFail = (error) => {
     const status = error?.response?.status ?? error?.status;
     const requestToken = error?.config?.__meditrustAuthToken;
-    const currentToken = localStorage.getItem("token");
+    const currentToken = sessionStorage.getItem("token");
 
     // 403 means authenticated but forbidden; it must not log the user out.
     // A 401 only invalidates the session if it belongs to the current token.
