@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useMemo, useState, useEffect } from "react";
+import { createContext, useContext, useReducer, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import AuthService from "services/auth-service";
@@ -29,41 +29,85 @@ const AuthContextProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
+  const validationSequence = useRef(0);
 
-  useEffect(() => {
-    let active = true;
-    if (!localStorage.getItem("token")) {
-      setIsLoading(false);
-      return () => { active = false; };
-    }
-    AuthService.getProfile()
-      .then((response) => {
-        const currentUser = normalizeUser(response);
-        if (!currentUser) throw new Error("La API no devolvió una identidad válida.");
-        if (active) setUser(currentUser);
-      })
-      .catch(() => {
-        localStorage.removeItem("token");
-        if (active) setUser(null);
-      })
-      .finally(() => { if (active) setIsLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const login = (token, responseUser) => {
-    const currentUser = normalizeUser(responseUser);
-    if (!token || !currentUser) throw new Error("La respuesta de autenticación no contiene token y rol válidos.");
-    localStorage.setItem("token", token);
-    setUser(currentUser);
-    navigate(getRoleHomePath(currentUser.role), { replace: true });
-  };
-  const register = (token, responseUser) => login(token, responseUser);
-  const logout = () => {
+  const logout = useCallback(() => {
+    validationSequence.current += 1;
     localStorage.removeItem("token");
     setUser(null);
+    setIsLoading(false);
     navigate("/auth/login", { replace: true });
-  };
-  const value = useMemo(() => ({ isAuthenticated: Boolean(user), isLoading, user, login, register, logout }), [user, isLoading]);
+  }, [navigate]);
+
+  const login = useCallback((token, responseUser) => {
+    const currentUser = normalizeUser(responseUser);
+    if (!token || !currentUser) throw new Error("La respuesta de autenticación no contiene token y rol válidos.");
+    validationSequence.current += 1;
+    localStorage.setItem("token", token);
+    setUser(currentUser);
+    setIsLoading(false);
+    navigate(getRoleHomePath(currentUser.role), { replace: true });
+  }, [navigate]);
+
+  const register = login;
+
+  useEffect(() => {
+    let mounted = true;
+
+    const synchronizeSession = () => {
+      const token = localStorage.getItem("token");
+      const sequence = ++validationSequence.current;
+
+      // Never keep showing the previous account while the new token is checked.
+      setUser(null);
+      if (!token) {
+        setIsLoading(false);
+        navigate("/auth/login", { replace: true });
+        return;
+      }
+
+      setIsLoading(true);
+      AuthService.getProfile()
+        .then((response) => {
+          if (!mounted || sequence !== validationSequence.current || localStorage.getItem("token") !== token) return;
+          const currentUser = normalizeUser(response);
+          if (!currentUser) throw new Error("La API no devolvió una identidad válida.");
+          setUser(currentUser);
+          setIsLoading(false);
+          navigate(getRoleHomePath(currentUser.role), { replace: true });
+        })
+        .catch(() => {
+          if (!mounted || sequence !== validationSequence.current || localStorage.getItem("token") !== token) return;
+          localStorage.removeItem("token");
+          setUser(null);
+          setIsLoading(false);
+          navigate("/auth/login", { replace: true });
+        });
+    };
+
+    const onStorage = (event) => {
+      if (event.storageArea === localStorage && (event.key === "token" || event.key === null)) {
+        synchronizeSession();
+      }
+    };
+    const onSessionInvalid = () => logout();
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("meditrust:session-invalid", onSessionInvalid);
+    synchronizeSession();
+
+    return () => {
+      mounted = false;
+      validationSequence.current += 1;
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("meditrust:session-invalid", onSessionInvalid);
+    };
+  }, [logout, navigate]);
+
+  const value = useMemo(() => ({
+    isAuthenticated: Boolean(user), isLoading, user, login, register, logout,
+  }), [user, isLoading, login, register, logout]);
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
