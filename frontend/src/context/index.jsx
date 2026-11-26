@@ -85,21 +85,14 @@ const AuthContextProvider = ({ children }) => {
         });
     };
 
-    const onStorage = (event) => {
-      if (event.storageArea === localStorage && (event.key === "token" || event.key === null)) {
-        synchronizeSession(true);
-      }
-    };
     const onSessionInvalid = () => logout();
 
-    window.addEventListener("storage", onStorage);
     window.addEventListener("meditrust:session-invalid", onSessionInvalid);
     synchronizeSession();
 
     return () => {
       mounted = false;
       validationSequence.current += 1;
-      window.removeEventListener("storage", onStorage);
       window.removeEventListener("meditrust:session-invalid", onSessionInvalid);
     };
   }, [logout, navigate]);
