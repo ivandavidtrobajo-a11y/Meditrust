@@ -35,7 +35,13 @@ from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
 from database.neo4j_schema import create_constraints
 from services.neo4j_selector import select_medical_data
-from services.authorization import require_role, require_admin, require_patient_access, require_active_user, require_active_patient_assignment
+from services.authorization import (
+    require_role,
+    require_admin,
+    require_patient_access,
+    require_active_user,
+    require_active_patient_assignment,
+)
 from services.clinical_workflow import router as clinical_workflow_router
 from services.capture_analysis import manager as capture_analysis_manager
 
