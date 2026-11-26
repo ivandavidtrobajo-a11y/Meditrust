@@ -7,11 +7,11 @@ export class HttpService {
   _axios = Axios.create();
 
   addRequestInterceptor = (onFulfilled, onRejected) => {
-    this._axios.interceptors.request.use(onFulfilled, onRejected);
+    return this._axios.interceptors.request.use(onFulfilled, onRejected);
   };
 
   addResponseInterceptor = (onFulfilled, onRejected) => {
-    this._axios.interceptors.response.use(onFulfilled, onRejected);
+    return this._axios.interceptors.response.use(onFulfilled, onRejected);
   };
 
   get = async (url) => await this.request(this.getOptionsConfig("get", url));
