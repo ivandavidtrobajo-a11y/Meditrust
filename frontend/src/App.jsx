@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useContext } from "react";
-import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import Icon from "@mui/material/Icon";
@@ -17,7 +17,6 @@ import routes from "routes";
 import { useMaterialUIController, setMiniSidenav, setOpenConfigurator } from "context";
 import brandWhite from "assets/images/logo-ct.png";
 import brandDark from "assets/images/logo-ct-dark.png";
-import { setupAxiosInterceptors } from "./services/interceptor";
 import ProtectedRoute from "examples/ProtectedRoute";
 import ForgotPassword from "auth/forgot-password";
 import ResetPassword from "auth/reset-password";
@@ -52,12 +51,7 @@ export default function App() {
   };
 
   const handleConfiguratorOpen = () => setOpenConfigurator(dispatch, !openConfigurator);
-  const navigate = useNavigate();
-  setupAxiosInterceptors(() => {
-    authContext.logout();
-    navigate("/auth/login");
-  });
-
+ 
   useEffect(() => {
     document.body.setAttribute("dir", direction);
   }, [direction]);
@@ -75,7 +69,7 @@ export default function App() {
           exact
           path={route.route}
           element={
-            <ProtectedRoute isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user} allowedRoles={route.allowedRoles}>
+            <ProtectedRoute key={`${authContext.user?.id || "anonymous"}:${route.key}`} isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user} allowedRoles={route.allowedRoles}>
               {route.component}
             </ProtectedRoute>
           }
@@ -158,7 +152,7 @@ export default function App() {
               exact
               path="/user-profile"
               element={
-                <ProtectedRoute isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user}>
+                <ProtectedRoute key={authContext.user?.id || "anonymous"} isAuthenticated={authContext.isAuthenticated} isLoading={authContext.isLoading} user={authContext.user}>
                   <UserProfile />
                 </ProtectedRoute>
               }
