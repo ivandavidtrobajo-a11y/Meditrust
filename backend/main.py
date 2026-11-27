@@ -260,7 +260,7 @@ def login(request: AuthRequest):
             "id": str(user["_id"]),
             "name": user.get("name", ""),
             "email": user["email"],
-            "role": user.get("role", "embarazada"),
+            "role": normalize_role(user.get("role")),
         },
     }
 
@@ -276,7 +276,7 @@ def register(request: AuthRequest):
     access_token = create_access_token({
         "id": user["_id"],
         "email": user["email"],
-        "role": user.get("role", "embarazada"),
+        "role": normalize_role(user.get("role")),
     })
     return {
         "token_type": "Bearer",
@@ -286,7 +286,7 @@ def register(request: AuthRequest):
             "id": user["_id"],
             "name": user.get("name", ""),
             "email": user["email"],
-            "role": user.get("role", "embarazada"),
+            "role": normalize_role(user.get("role")),
         },
     }
 
@@ -298,7 +298,7 @@ def _admin_user_payload(user: dict) -> dict:
         "id": str(user["_id"]),
         "name": user.get("name", ""),
         "email": user.get("email", ""),
-        "role": user.get("role", "embarazada"),
+        "role": normalize_role(user.get("role")),
         "is_active": user.get("is_active", True) is not False,
         "created_at": created_at.isoformat() if created_at else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
