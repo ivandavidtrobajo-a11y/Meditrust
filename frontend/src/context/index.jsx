@@ -22,7 +22,7 @@ const normalizeUser = (response) => {
   const id = profile?.id || attributes?.id;
   if (!id || !attributes?.role) return null;
   return { id: String(id), name: attributes.name || "", email: attributes.email || "",
-    role: String(attributes.role).toLowerCase(), profile_image: attributes.profile_image || null };
+    role: String(attributes.role).trim().toLowerCase(), profile_image: attributes.profile_image || null };
 };
 
 const AuthContextProvider = ({ children }) => {
