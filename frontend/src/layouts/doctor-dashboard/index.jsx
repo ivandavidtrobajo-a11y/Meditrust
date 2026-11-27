@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { authenticatedFetch, getAuthToken } from "services/api-client";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogContent, DialogTitle, Grid, IconButton, Stack, TextField, Typography,
@@ -16,12 +17,10 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
 const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token") || ""}` });
-
 async function api(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await authenticatedFetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { ...authHeaders(), "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.detail || body.message || `Error HTTP ${response.status}`);
@@ -129,7 +128,7 @@ export default function DoctorDashboard() {
       return;
     }
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setError("Tu sesión no contiene un token. Inicia sesión de nuevo.");
       return;
@@ -139,7 +138,7 @@ export default function DoctorDashboard() {
     setCaptureImageLoading(imageId);
     try {
       const url = `${API_BASE}/patient-captures/${encodeURIComponent(capture.patient_id)}/${encodeURIComponent(imageId)}/image`;
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await authenticatedFetch(url);
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.detail || `No se pudo recuperar la imagen (HTTP ${response.status}).`);
