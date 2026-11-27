@@ -80,7 +80,7 @@ app.add_middleware(
 
 
 
-UPLOAD_DIR = os.path.abspath(os.path.join(os.getcwd(), "uploads"))
+UPLOAD_DIR = os.path.abspath(os.getenv("UPLOAD_DIR", os.path.join(os.getcwd(), "uploads")))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 TASKS = {}
@@ -127,6 +127,21 @@ def start_capture_analysis_worker():
                 collection.create_index(keys)
             except Exception:
                 logging.exception("No se pudo crear un índice de análisis de capturas.")
+
+        # Índices únicos dispersos: los documentos históricos sin SHA-256 no se ven afectados.
+        for collection, field, index_name in [
+            (database.documents, "sha256", "unique_document_content_sha256"),
+            (database.datasets, "sha256", "unique_dataset_content_sha256"),
+        ]:
+            try:
+                collection.create_index(
+                    [(field, 1)],
+                    unique=True,
+                    sparse=True,
+                    name=index_name,
+                )
+            except Exception:
+                logging.exception("No se pudo crear el índice de deduplicación %s.", index_name)
     except Exception:
         logging.exception("MongoDB no está disponible al iniciar el trabajador; se reintentará desde el proceso.")
     capture_analysis_manager.start()
@@ -994,6 +1009,52 @@ async def delete_doc(id: str, current_user=Depends(get_current_user)):
     except Exception as e:
         logging.exception(f"Error al eliminar documento: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/admin/uploads/clear")
+def clear_uploaded_files(current_user=Depends(get_current_user)):
+    """Vacía /app/uploads y retira sus referencias de la lista de documentos.
+    No elimina datasets históricos de MongoDB ni nodos/relaciones de Neo4j.
+    """
+    require_admin(current_user)
+    upload_root = Path(UPLOAD_DIR).resolve()
+    upload_root.mkdir(parents=True, exist_ok=True)
+    removed_files = 0
+    removed_records = 0
+
+    for item in upload_root.iterdir():
+        try:
+            resolved = item.resolve()
+            if resolved.parent != upload_root:
+                continue
+            if item.is_file() or item.is_symlink():
+                item.unlink()
+                removed_files += 1
+        except OSError:
+            logging.exception("No se pudo eliminar el archivo %s durante la limpieza.", item)
+
+    database = get_db()
+    for record in database.documents.find({}, {"ruta": 1}):
+        raw_path = record.get("ruta")
+        if not raw_path:
+            continue
+        try:
+            candidate = Path(raw_path).resolve()
+            if candidate.parent == upload_root:
+                result = database.documents.delete_one({"_id": record["_id"]})
+                removed_records += result.deleted_count
+        except (OSError, ValueError):
+            logging.warning("Se omitió una ruta de documento no válida durante la limpieza.")
+
+    return {
+        "status": "cleaned",
+        "directory": str(upload_root),
+        "files_removed": removed_files,
+        "document_records_removed": removed_records,
+        "historical_datasets_preserved": True,
+        "neo4j_graph_preserved": True,
+        "message": "Carpeta de subidas vaciada. Los datasets históricos y el grafo de Neo4j se conservaron.",
+    }
 
 
 @app.post("/upload/")
