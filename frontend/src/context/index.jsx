@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import AuthService from "services/auth-service";
 
 const MaterialUI = createContext();
@@ -29,6 +29,11 @@ const AuthContextProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const navigateRef = useRef(navigate);
+  const pathnameRef = useRef(pathname);
+  navigateRef.current = navigate;
+  pathnameRef.current = pathname;
   const validationSequence = useRef(0);
 
   const logout = useCallback(() => {
@@ -54,7 +59,7 @@ const AuthContextProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true;
 
-    const synchronizeSession = (redirectWhenMissing = false) => {
+    const synchronizeSession = () => {
       const token = sessionStorage.getItem("token");
       const sequence = ++validationSequence.current;
 
@@ -62,7 +67,6 @@ const AuthContextProvider = ({ children }) => {
       setUser(null);
       if (!token) {
         setIsLoading(false);
-        if (redirectWhenMissing) navigate("/auth/login", { replace: true });
         return;
       }
 
@@ -74,18 +78,30 @@ const AuthContextProvider = ({ children }) => {
           if (!currentUser) throw new Error("La API no devolvió una identidad válida.");
           setUser(currentUser);
           setIsLoading(false);
-          navigate(getRoleHomePath(currentUser.role), { replace: true });
+
+          // Restore the role home only from the root or authentication screens.
+          // Preserve deep links when the user refreshes a protected page.
+          const currentPath = pathnameRef.current;
+          if (currentPath === "/" || currentPath.startsWith("/auth/")) {
+            navigateRef.current(getRoleHomePath(currentUser.role), { replace: true });
+          }
         })
         .catch(() => {
           if (!mounted || sequence !== validationSequence.current || sessionStorage.getItem("token") !== token) return;
           sessionStorage.removeItem("token");
           setUser(null);
           setIsLoading(false);
-          navigate("/auth/login", { replace: true });
+          navigateRef.current("/auth/login", { replace: true });
         });
     };
 
-    const onSessionInvalid = () => logout();
+    const onSessionInvalid = () => {
+      validationSequence.current += 1;
+      sessionStorage.removeItem("token");
+      setUser(null);
+      setIsLoading(false);
+      navigateRef.current("/auth/login", { replace: true });
+    };
 
     window.addEventListener("meditrust:session-invalid", onSessionInvalid);
     synchronizeSession();
@@ -95,7 +111,7 @@ const AuthContextProvider = ({ children }) => {
       validationSequence.current += 1;
       window.removeEventListener("meditrust:session-invalid", onSessionInvalid);
     };
-  }, [logout, navigate]);
+  }, []);
 
   const value = useMemo(() => ({
     isAuthenticated: Boolean(user), isLoading, user, login, register, logout,
