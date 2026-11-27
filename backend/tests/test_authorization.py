@@ -4,8 +4,6 @@ Run from the backend directory with:
     python -m unittest discover -s tests -v
 """
 import unittest
-from unittest.mock import Mock
-
 from fastapi import HTTPException
 
 from services.authorization import (
