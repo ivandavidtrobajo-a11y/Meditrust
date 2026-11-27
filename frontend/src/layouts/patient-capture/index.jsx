@@ -1,5 +1,6 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "context";
+import { authenticatedFetch, getAuthToken } from "services/api-client";
 import {
   Alert, Card, CardContent, Chip, CircularProgress, Divider, Grid,
   IconButton, Stack, TextField, Typography, Button,
@@ -41,7 +42,7 @@ export default function PatientCapture() {
   const loadRelationships = useCallback(async () => {
     setRelationshipStatus("loading");
     setRelationshipError("");
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setRelationshipStatus("error");
       setRelationshipError("Tu sesión no contiene un token. Inicia sesión de nuevo.");
@@ -49,8 +50,7 @@ export default function PatientCapture() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/patient/relationships`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`${API_BASE}/patient/relationships`, {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -128,7 +128,7 @@ export default function PatientCapture() {
       setHistoryError("Introduce el identificador del paciente para consultar su historial.");
       return;
     }
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setHistoryError("Tu sesión no contiene un token. Inicia sesión de nuevo.");
       return;
@@ -136,9 +136,8 @@ export default function PatientCapture() {
 
     setHistoryLoading(true);
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE}/patient-captures/${encodeURIComponent(id)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -165,7 +164,7 @@ export default function PatientCapture() {
       return;
     }
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setHistoryError("Tu sesión no contiene un token. Inicia sesión de nuevo.");
       return;
@@ -174,7 +173,6 @@ export default function PatientCapture() {
     setImageLoading(id);
     try {
       const url = `${API_BASE}/patient-captures/${encodeURIComponent(capture.patient_id)}/${encodeURIComponent(id)}/image`;
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.detail || `No se pudo recuperar la imagen (HTTP ${response.status}).`);
@@ -216,7 +214,7 @@ export default function PatientCapture() {
       return;
     }
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setError("Tu sesión no contiene un token. Cierra sesión e inicia sesión de nuevo.");
       return;
@@ -230,9 +228,8 @@ export default function PatientCapture() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/patient-captures/`, {
+      const response = await authenticatedFetch(`${API_BASE}/patient-captures/`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const body = await response.json().catch(() => ({}));
