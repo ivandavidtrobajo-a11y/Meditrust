@@ -1,5 +1,3 @@
-
-
 // prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
 
@@ -23,14 +21,29 @@ import {
 // Material Dashboard 2 React context
 import { useMaterialUIController } from "context";
 
-function SidenavCollapse({ icon, name, active, ...rest }) {
+function SidenavCollapse({
+  icon,
+  name,
+  active,
+  component = "div",
+  to,
+  href,
+  target,
+  rel,
+  onClick,
+}) {
   const [controller] = useMaterialUIController();
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode, sidenavColor } = controller;
 
   return (
-    <ListItem component="li">
+    <ListItem component="li" disablePadding>
       <MDBox
-        {...rest}
+        component={component}
+        to={to}
+        href={href}
+        target={target}
+        rel={rel}
+        onClick={onClick}
         sx={(theme) =>
           collapseItem(theme, {
             active,
@@ -69,16 +82,26 @@ function SidenavCollapse({ icon, name, active, ...rest }) {
   );
 }
 
-// Setting default values for the props of SidenavCollapse
 SidenavCollapse.defaultProps = {
   active: false,
+  component: "div",
+  to: undefined,
+  href: undefined,
+  target: undefined,
+  rel: undefined,
+  onClick: undefined,
 };
 
-// Typechecking props for the SidenavCollapse
 SidenavCollapse.propTypes = {
   icon: PropTypes.node.isRequired,
   name: PropTypes.string.isRequired,
   active: PropTypes.bool,
+  component: PropTypes.elementType,
+  to: PropTypes.string,
+  href: PropTypes.string,
+  target: PropTypes.string,
+  rel: PropTypes.string,
+  onClick: PropTypes.func,
 };
 
 export default SidenavCollapse;
