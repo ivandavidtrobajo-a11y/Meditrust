@@ -46,8 +46,13 @@ def get_user_by_email(email: str):
 
 
 def get_user_by_id(user_id: str):
-    db = get_db()
+    """Busca una cuenta por ObjectId; IDs inválidos se tratan como no encontrados."""
     from bson.objectid import ObjectId
+
+    if not isinstance(user_id, str) or not ObjectId.is_valid(user_id):
+        return None
+
+    db = get_db()
     return db.users.find_one({"_id": ObjectId(user_id)})
 
 
