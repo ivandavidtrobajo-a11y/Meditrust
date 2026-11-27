@@ -77,7 +77,10 @@ def require_patient_access(current_user: dict, patient_id: str, database=None) -
             raise RuntimeError("Se necesita la base de datos para verificar la asignación médica.")
         assignment = database["doctor_patient_assignments"].find_one({
             "doctor_id": current_id, "patient_id": patient_id,
-            "$or": [{"status": "active"}, {"active": True}],
+            "$or": [
+                {"status": "active"},
+                {"status": {"$exists": False}, "active": True},
+            ],
         })
         if assignment is None:
             raise HTTPException(status_code=403, detail="No tienes una asignación activa con este paciente.")
