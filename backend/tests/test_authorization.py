@@ -6,10 +6,12 @@ Run from the backend directory with:
 import unittest
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.testclient import TestClient
 
 from services.auth_service import get_user_by_id
+from services.clinical_workflow import router as clinical_workflow_router
 from services.authorization import (
     get_current_user,
     normalize_role,
@@ -83,9 +85,11 @@ class AuthorizationTests(unittest.TestCase):
             require_patient_access(doctor, "patient-1", database),
             doctor,
         )
+        query = database["doctor_patient_assignments"].last_query
+        self.assertEqual(query["doctor_id"], "doctor-1")
         self.assertEqual(
-            database["doctor_patient_assignments"].last_query["doctor_id"],
-            "doctor-1",
+            query["$or"][1],
+            {"status": {"$exists": False}, "active": True},
         )
 
     def test_doctor_cannot_access_patient_without_assignment(self):
@@ -177,6 +181,40 @@ class AuthorizationTests(unittest.TestCase):
             result = get_current_user(credentials)
         self.assertEqual(result["role"], "medico")
 
+
+
+
+class ClinicalRoutePermissionTests(unittest.TestCase):
+    def _client_for(self, role):
+        app = FastAPI()
+        app.include_router(clinical_workflow_router)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "_id": "507f1f77bcf86cd799439011",
+            "role": role,
+        }
+        return TestClient(app)
+
+    def test_patient_cannot_create_doctor_linking_code(self):
+        response = self._client_for("embarazada").post("/doctor/linking-codes")
+        self.assertEqual(response.status_code, 403)
+
+    def test_doctor_cannot_redeem_patient_linking_code(self):
+        response = self._client_for("medico").post(
+            "/patient/link", json={"code": "ABC234"}
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_patient_cannot_list_doctor_patients(self):
+        response = self._client_for("embarazada").get("/doctor/patients")
+        self.assertEqual(response.status_code, 403)
+
+    def test_doctor_cannot_list_patient_relationships(self):
+        response = self._client_for("medico").get("/patient/relationships")
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_cannot_access_doctor_patient_workflow(self):
+        response = self._client_for("admin").get("/doctor/patients")
+        self.assertEqual(response.status_code, 403)
 
 if __name__ == "__main__":
     unittest.main()
