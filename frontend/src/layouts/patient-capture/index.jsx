@@ -50,8 +50,7 @@ export default function PatientCapture() {
     }
 
     try {
-      const response = await authenticatedFetch(`${API_BASE}/patient/relationships`, {
-      });
+      const response = await authenticatedFetch(`${API_BASE}/patient/relationships`);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(body.detail || `La API respondió con el estado ${response.status}.`);
@@ -137,7 +136,7 @@ export default function PatientCapture() {
     setHistoryLoading(true);
     try {
       const response = await authenticatedFetch(
-        `${API_BASE}/patient-captures/${encodeURIComponent(id)}`,
+        `${API_BASE}/patient-captures/${encodeURIComponent(id)}`
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
