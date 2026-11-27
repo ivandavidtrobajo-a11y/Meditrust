@@ -333,25 +333,30 @@ const handleStopIA = async () => {
         data = { detail: "El servidor devolvió una respuesta que no se pudo interpretar." };
       }
 
-      const succeeded = status >= 200 && status < 300;
+      const isDuplicate = status >= 200 && status < 300 && data.duplicate === true;
+      const succeeded = status >= 200 && status < 300 && data.status === "processed";
       const serverMessage = data.message || data.detail || (
-        succeeded ? `Archivo recibido: ${file.name}` : `Error HTTP ${status || "sin respuesta"}`
+        succeeded ? `Archivo recibido: ${file.name}` : `El servidor no confirmó la importación (HTTP ${status || "sin respuesta"}).`
       );
 
       setIsUploading(false);
       isUploadingRef.current = false;
-      setUploadProgress((currentProgress) => (succeeded ? 100 : currentProgress));
-      setUploadStatus(succeeded ? "success" : "error");
+      setUploadProgress((currentProgress) => (succeeded || isDuplicate ? 100 : currentProgress));
+      setUploadStatus(isDuplicate ? "duplicate" : succeeded ? "success" : "error");
       setUploadMessage(String(serverMessage));
       setMessages((prev) => [...prev, {
-        text: succeeded ? String(serverMessage) : `No se pudo subir el archivo (HTTP ${status || "sin respuesta"}): ${serverMessage}`,
+        text: succeeded || isDuplicate
+          ? String(serverMessage)
+          : `No se confirmó la importación de ${file.name}: ${serverMessage}`,
         sender: "system",
       }]);
 
       if (succeeded) {
-        setHistory((prev) => [...prev, `📁 Archivo subido: ${file.name}`]);
+        setHistory((prev) => [...prev, `📁 Archivo importado: ${file.name}`]);
+      } else if (isDuplicate) {
+        setHistory((prev) => [...prev, `ℹ️ Archivo ya existente; no se duplicó: ${file.name}`]);
       } else {
-        setHistory((prev) => [...prev, `⚠️ Error al subir ${file.name} (HTTP ${status || "sin respuesta"}).`]);
+        setHistory((prev) => [...prev, `⚠️ Importación no confirmada: ${file.name}.`]);
       }
     };
 
@@ -634,8 +639,9 @@ const handleStopIA = async () => {
                   <MDTypography variant="caption" sx={{ whiteSpace: "nowrap", color: uploadStatus === "error" ? "error.main" : "text.secondary" }}>
                     {uploadStatus === "uploading" && `Subiendo · ${uploadProgress}%`}
                     {uploadStatus === "processing" && "Enviado · esperando servidor"}
-                    {uploadStatus === "success" && "Completado · 100%"}
-                    {uploadStatus === "error" && `Error · ${uploadProgress}%`}
+                    {uploadStatus === "success" && "Importado · 100%"}
+                    {uploadStatus === "duplicate" && "Ya existía · 100%"}
+                    {uploadStatus === "error" && `No confirmado · ${uploadProgress}%`}
                   </MDTypography>
                 </MDBox>
                 <LinearProgress
