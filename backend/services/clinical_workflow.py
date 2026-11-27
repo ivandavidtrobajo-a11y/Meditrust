@@ -8,17 +8,15 @@ from datetime import date, datetime, timedelta, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from database.mongodb import get_db
-from services.auth_service import decode_token, get_user_by_id
+from services.authorization import get_current_user, require_role
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["clinical-workflow"])
-security = HTTPBearer()
 
 CODE_TTL_HOURS = 48
 CODE_ATTEMPT_WINDOW_MINUTES = 15
@@ -35,23 +33,8 @@ class PregnancyUpdate(BaseModel):
     gestational_week: int = Field(ge=0, le=42)
 
 
-def current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    payload = decode_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado.")
-    user = get_user_by_id(payload.get("id"))
-    if not user:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado.")
-    return user
-
-
 def _uid(user):
     return str(user.get("_id", user.get("id", "")))
-
-
-def _require_role(user, role):
-    if user.get("role", "embarazada") != role:
-        raise HTTPException(status_code=403, detail="No tienes permisos para esta operación.")
 
 
 def _patient_id_or_404(patient_id):
@@ -152,8 +135,8 @@ def ensure_workflow_indexes():
 
 
 @router.post("/doctor/linking-codes")
-def create_linking_code(user=Depends(current_user)):
-    _require_role(user, "medico")
+def create_linking_code(user=Depends(get_current_user)):
+    require_role(user, "medico")
     db = get_db()
     doctor_id = _uid(user)
     raw_code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(10))
@@ -178,8 +161,8 @@ def create_linking_code(user=Depends(current_user)):
 
 
 @router.post("/patient/link")
-def redeem_linking_code(request: LinkCodeRequest, user=Depends(current_user)):
-    _require_role(user, "embarazada")
+def redeem_linking_code(request: LinkCodeRequest, user=Depends(get_current_user)):
+    require_role(user, "embarazada")
     db = get_db()
     patient_id = _uid(user)
     now = datetime.now(timezone.utc)
@@ -247,8 +230,8 @@ def redeem_linking_code(request: LinkCodeRequest, user=Depends(current_user)):
 
 
 @router.get("/doctor/patients")
-def list_doctor_patients(user=Depends(current_user)):
-    _require_role(user, "medico")
+def list_doctor_patients(user=Depends(get_current_user)):
+    require_role(user, "medico")
     db = get_db()
     doctor_id = _uid(user)
     assignments = list(db.doctor_patient_assignments.find({
@@ -282,8 +265,8 @@ def list_doctor_patients(user=Depends(current_user)):
 
 
 @router.get("/doctor/patients/{patient_id}")
-def get_doctor_patient(patient_id: str, user=Depends(current_user)):
-    _require_role(user, "medico")
+def get_doctor_patient(patient_id: str, user=Depends(get_current_user)):
+    require_role(user, "medico")
     db = get_db()
     doctor_id = _uid(user)
     if not _active_assignment(db, doctor_id, patient_id):
@@ -304,8 +287,8 @@ def get_doctor_patient(patient_id: str, user=Depends(current_user)):
 
 
 @router.delete("/doctor/patients/{patient_id}/assignment")
-def deactivate_patient_assignment(patient_id: str, user=Depends(current_user)):
-    _require_role(user, "medico")
+def deactivate_patient_assignment(patient_id: str, user=Depends(get_current_user)):
+    require_role(user, "medico")
     db = get_db()
     doctor_id = _uid(user)
     assignment = _active_assignment(db, doctor_id, patient_id)
@@ -328,8 +311,8 @@ def deactivate_patient_assignment(patient_id: str, user=Depends(current_user)):
 
 
 @router.get("/patient/relationships")
-def patient_relationships(user=Depends(current_user)):
-    _require_role(user, "embarazada")
+def patient_relationships(user=Depends(get_current_user)):
+    require_role(user, "embarazada")
     db = get_db()
     patient_id = _uid(user)
     assignments = list(db.doctor_patient_assignments.find({
@@ -355,15 +338,15 @@ def patient_relationships(user=Depends(current_user)):
 
 
 @router.get("/patient/pregnancy")
-def get_patient_pregnancy(user=Depends(current_user)):
-    _require_role(user, "embarazada")
+def get_patient_pregnancy(user=Depends(get_current_user)):
+    require_role(user, "embarazada")
     profile = get_db().patient_profiles.find_one({"patient_id": _uid(user)}, {"_id": 0})
     return {"pregnancy": profile}
 
 
 @router.put("/doctor/patients/{patient_id}/pregnancy")
-def update_patient_pregnancy(patient_id: str, request: PregnancyUpdate, user=Depends(current_user)):
-    _require_role(user, "medico")
+def update_patient_pregnancy(patient_id: str, request: PregnancyUpdate, user=Depends(get_current_user)):
+    require_role(user, "medico")
     db = get_db()
     doctor_id = _uid(user)
     if not _active_assignment(db, doctor_id, patient_id):
