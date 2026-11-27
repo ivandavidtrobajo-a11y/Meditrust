@@ -9,6 +9,7 @@ import threading
 import re
 import unicodedata
 import json
+import hashlib
 
 from services.parser import parse_and_insert_consolidado
 from services.prompt import build_prompt
@@ -79,7 +80,7 @@ app.add_middleware(
 
 
 
-UPLOAD_DIR = os.path.join(os.getcwd(), "uploads")
+UPLOAD_DIR = os.path.abspath(os.path.join(os.getcwd(), "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 TASKS = {}
@@ -998,37 +999,90 @@ async def delete_doc(id: str, current_user=Depends(get_current_user)):
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...), current_user=Depends(get_current_user)):
     require_role(current_user, "medico", "admin")
+
+    original_name = Path(file.filename or "documento.xlsx").name
+    if not original_name.lower().endswith((".xls", ".xlsx")):
+        raise HTTPException(status_code=415, detail="Solo se admiten archivos Excel .xls o .xlsx.")
+
     try:
-        file_path = os.path.join(UPLOAD_DIR, file.filename)
-        with open(file_path, "wb") as f:
-            f.write(await file.read())
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="El archivo está vacío.")
 
-        save_document_node(file.filename, file_path, contenido="")
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        database = get_db()
 
-        parse_mensaje = ""
+        # La huella del contenido, no el nombre, identifica una subida repetida.
+        existing = database.documents.find_one({"sha256": file_hash})
+        if existing:
+            return {
+                "status": "duplicate",
+                "duplicate": True,
+                "filename": existing.get("nombre", original_name),
+                "sha256": file_hash,
+                "message": "Este archivo ya fue recibido y registrado. No se volvió a procesar.",
+            }
+
+        # Nombre físico único para no sobrescribir archivos distintos con el mismo nombre.
+        stored_name = f"{file_hash[:12]}_{original_name}"
+        file_path = os.path.abspath(os.path.join(UPLOAD_DIR, stored_name))
+        if os.path.commonpath([UPLOAD_DIR, file_path]) != UPLOAD_DIR:
+            raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+        with open(file_path, "wb") as output:
+            output.write(file_bytes)
+
         try:
-            parse_success = parse_and_insert_consolidado(file_path, documento_nombre=file.filename)
-            if parse_success:
-                logging.info(f"Archivo {file.filename} parseado e insertado en MongoDB")
+            parse_success = parse_and_insert_consolidado(
+                file_path,
+                documento_nombre=original_name,
+                sha256=file_hash,
+            )
+        except Exception:
+            logging.exception("Error procesando el archivo Excel.")
+            parse_success = False
 
-                ds = get_latest_dataset()
-                if ds and ds.get("conceptos"):
-                    contexto = _generar_contexto(ds, file.filename)
-                    db.datasets.update_one({"_id": ds["_id"]}, {"$set": {"contexto": contexto}})
-                    logging.info(f"Contexto generado para {file.filename}")
+        if not parse_success:
+            # No dejar archivos fallidos en la carpeta de documentos válidos.
+            try:
+                os.remove(file_path)
+            except OSError:
+                logging.exception("No se pudo retirar el archivo cuyo procesamiento falló.")
+            raise HTTPException(
+                status_code=422,
+                detail="El archivo llegó al servidor, pero no pudo importarse correctamente. No se registró como documento válido.",
+            )
 
-                parse_mensaje = " Datos importados correctamente."
-            else:
-                parse_mensaje = " El archivo se guardó pero no se pudo parsear la estructura."
-        except Exception as e:
-            logging.warning(f"No se pudo parsear/insertar estructura: {e}")
-            parse_mensaje = f" El archivo se guardó pero hubo un error al parsear: {e}"
+        save_document_node(
+            original_name,
+            file_path,
+            contenido="",
+            sha256=file_hash,
+        )
 
-        return {"filename": file.filename, "message": f"Archivo subido correctamente.{parse_mensaje}"}
+        ds = database.datasets.find_one({"sha256": file_hash})
+        if ds and ds.get("conceptos"):
+            contexto = _generar_contexto(ds, original_name)
+            database.datasets.update_one({"_id": ds["_id"]}, {"$set": {"contexto": contexto}})
 
+        return {
+            "status": "processed",
+            "duplicate": False,
+            "stored": True,
+            "parsed": True,
+            "mongo_saved": True,
+            "neo4j_saved": True,
+            "filename": original_name,
+            "sha256": file_hash,
+            "path": file_path,
+            "message": "Archivo recibido, validado e importado correctamente en MongoDB y Neo4j.",
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.exception(f"Error al subir archivo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.exception("Error al subir/procesar el archivo.")
+        raise HTTPException(status_code=500, detail="Error interno al guardar o procesar el archivo.")
 
 
 def _generar_contexto(ds: dict, filename: str) -> str:
