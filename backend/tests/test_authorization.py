@@ -5,6 +5,7 @@ Run from the backend directory with:
 """
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -214,6 +215,19 @@ class ClinicalRoutePermissionTests(unittest.TestCase):
 
     def test_admin_cannot_access_doctor_patient_workflow(self):
         response = self._client_for("admin").get("/doctor/patients")
+        self.assertEqual(response.status_code, 403)
+
+    def test_missing_token_is_401_at_clinical_api_boundary(self):
+        app = FastAPI()
+        app.include_router(clinical_workflow_router)
+        response = TestClient(app).get("/doctor/patients")
+        self.assertEqual(response.status_code, 401)
+
+    def test_doctor_cannot_read_unassigned_patient_detail(self):
+        client = self._client_for("medico")
+        database = SimpleNamespace(doctor_patient_assignments=FakeCollection())
+        with patch("services.clinical_workflow.get_db", return_value=database):
+            response = client.get("/doctor/patients/507f1f77bcf86cd799439012")
         self.assertEqual(response.status_code, 403)
 
 if __name__ == "__main__":
