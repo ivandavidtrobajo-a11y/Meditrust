@@ -17,13 +17,14 @@ import { useNavigate } from "react-router-dom";
 import { useMaterialUIController, setLayout } from "context";
 import { Mirage } from "ldrs/react";
 import "ldrs/react/Mirage.css";
+import { getAuthToken } from "../../services/api-client";
 
 function Medistrust() {
   const [controller, dispatch] = useMaterialUIController();
   const navigate = useNavigate();
   const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
   const authHeaders = () => ({
-    Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+    Authorization: `Bearer ${getAuthToken() || ""}`,
   });
   const [conversationId, setConversationId] = useState(() => {
     let id = localStorage.getItem("activeChatConversationId");
@@ -356,7 +357,7 @@ const handleStopIA = async () => {
 
     xhr.open("POST", `${API_BASE}/upload/`);
     xhr.timeout = 15 * 60 * 1000;
-    xhr.setRequestHeader("Authorization", `Bearer ${localStorage.getItem("token") || ""}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${getAuthToken() || ""}`);
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
