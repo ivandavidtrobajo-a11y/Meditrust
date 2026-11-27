@@ -128,7 +128,7 @@ def _buscar_polyclinico(df, fila_actual, policlinico_actual):
     return policlinico_actual
 
 
-def parse_and_insert_consolidado(file_path, documento_nombre=None):
+def parse_and_insert_consolidado(file_path, documento_nombre=None, sha256=None):
     try:
         # ---------------------------------------------------------
         # 1. Leer Excel
@@ -355,7 +355,7 @@ def parse_and_insert_consolidado(file_path, documento_nombre=None):
         # 7. Guardar MongoDB
         # ---------------------------------------------------------
 
-        save_dataset(doc)
+        save_dataset(doc, sha256=sha256)
 
         print("Dataset guardado correctamente en MongoDB.")
 
@@ -367,7 +367,8 @@ def parse_and_insert_consolidado(file_path, documento_nombre=None):
             policlinico=doc["policlinico"],
             cmfs=doc["cmfs"],
             conceptos=doc["conceptos"],
-            filename=doc["filename"]
+            filename=doc["filename"],
+            sha256=sha256,
         )
 
         print("Grafo médico guardado correctamente en Neo4j.")
