@@ -40,7 +40,8 @@ class Neo4jConnection:
         policlinico,
         cmfs,
         conceptos,
-        filename=None
+        filename=None,
+        sha256=None
     ):
         """
         Inserta el dataset médico en Neo4j de forma idempotente.
@@ -77,11 +78,13 @@ class Neo4jConnection:
             self.execute_query(
                 """
                 MERGE (d:Documento {nombre: $filename})
-                SET d.policlinico = $policlinico
+                SET d.policlinico = $policlinico,
+                    d.sha256 = $sha256
                 """,
                 {
                     "filename": filename,
-                    "policlinico": policlinico
+                    "policlinico": policlinico,
+                    "sha256": sha256
                 }
             )
 
