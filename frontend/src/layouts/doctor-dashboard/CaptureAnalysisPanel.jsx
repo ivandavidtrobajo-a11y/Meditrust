@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { authenticatedFetch } from "services/api-client";
 import {
   Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip,
   CircularProgress, Divider, Grid, MenuItem, Paper, Stack, TextField, Typography,
@@ -6,12 +7,10 @@ import {
 import ExpandMoreOutlinedIcon from "@mui/icons-material/ExpandMoreOutlined";
 
 const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token") || ""}` });
-
 async function api(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await authenticatedFetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { ...authHeaders(), "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.detail || body.message || `Error HTTP ${response.status}`);
