@@ -1,16 +1,37 @@
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from services.auth_service import decode_token, get_user_by_id
 
 SUPPORTED_ROLES = {"embarazada", "medico", "admin"}
+security = HTTPBearer()
 
 def _user_id(user: dict) -> str:
     return str(user.get("_id", user.get("id", "")))
 
+def normalize_role(role) -> str:
+    return str(role or "embarazada").strip().lower()
+
 def _role(user: dict) -> str:
-    return str(user.get("role", "embarazada")).strip().lower()
+    return normalize_role(user.get("role"))
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Resuelve una única identidad autenticada y activa para todos los endpoints."""
+    payload = decode_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado.")
+    user = get_user_by_id(payload.get("id"))
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado.")
+    require_active_user(user)
+    # Entrega una representación canónica del rol a todas las rutas.
+    user["role"] = _role(user)
+    return user
 
 def require_role(current_user: dict, *allowed_roles: str) -> dict:
     role = _role(current_user)
-    if role not in SUPPORTED_ROLES or role not in set(allowed_roles):
+    normalized_allowed = {normalize_role(item) for item in allowed_roles}
+    if role not in SUPPORTED_ROLES or role not in normalized_allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para realizar esta operación.")
     return current_user
 
