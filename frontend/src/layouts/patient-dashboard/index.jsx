@@ -5,14 +5,13 @@ import RefreshOutlinedIcon from "@mui/icons-material/Refresh";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { authenticatedFetch } from "services/api-client";
 
 const API_BASE = import.meta.env.VITE_AI_API_URL || "http://127.0.0.1:8000";
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token") || ""}` });
-
 async function api(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await authenticatedFetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { ...authHeaders(), "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.detail || body.message || `Error HTTP ${response.status}`);
