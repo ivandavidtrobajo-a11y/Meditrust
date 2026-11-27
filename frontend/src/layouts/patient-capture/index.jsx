@@ -173,6 +173,7 @@ export default function PatientCapture() {
     setImageLoading(id);
     try {
       const url = `${API_BASE}/patient-captures/${encodeURIComponent(capture.patient_id)}/${encodeURIComponent(id)}/image`;
+      const response = await authenticatedFetch(url);
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.detail || `No se pudo recuperar la imagen (HTTP ${response.status}).`);
