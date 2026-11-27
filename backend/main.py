@@ -250,7 +250,7 @@ def login(request: AuthRequest):
     access_token = create_access_token({
         "id": str(user["_id"]),
         "email": user["email"],
-        "role": user.get("role", "embarazada"),
+        "role": normalize_role(user.get("role")),
     })
     return {
         "token_type": "Bearer",
@@ -402,7 +402,7 @@ def admin_update_user_status(
     if request.is_active is False:
         if object_id == current_user["_id"]:
             raise HTTPException(status_code=400, detail="No puedes desactivar tu propia cuenta.")
-        if target.get("role", "embarazada") == "admin":
+        if normalize_role(target.get("role")) == "admin":
             active_admins = database.users.count_documents({
                 "role": "admin",
                 "is_active": {"$ne": False},
