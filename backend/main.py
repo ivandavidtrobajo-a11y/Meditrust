@@ -1,7 +1,6 @@
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends, status
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import os
 import logging
@@ -41,6 +40,8 @@ from services.authorization import (
     require_patient_access,
     require_active_user,
     require_active_patient_assignment,
+    get_current_user,
+    normalize_role,
 )
 from services.clinical_workflow import router as clinical_workflow_router
 from services.capture_analysis import manager as capture_analysis_manager
@@ -55,7 +56,6 @@ except Exception as e:
 app = FastAPI()
 frontend_build = Path(__file__).resolve().parent.parent / "frontend" / "build"
 
-security = HTTPBearer()
 
 
 cors_origins = [
@@ -192,17 +192,6 @@ class AuthRequest(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    payload = decode_token(credentials.credentials)
-    if payload is None:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    user = get_user_by_id(payload.get("id"))
-    if user is None:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    require_active_user(user)
-    return user
-
-
 def _user_to_json(user) -> dict:
     return {
         "data": {
@@ -211,7 +200,7 @@ def _user_to_json(user) -> dict:
             "attributes": {
                 "name": user.get("name", ""),
                 "email": user.get("email", ""),
-                "role": user.get("role", "embarazada"),
+                "role": normalize_role(user.get("role")),
                 "profile_image": user.get("profile_image"),
                 "createdAt": user.get("created_at"),
                 "updateAt": user.get("updated_at"),
@@ -759,7 +748,7 @@ def patient_capture_analysis_history(patient_id: str, gridfs_id: str = None,
                                       current_user=Depends(get_current_user)):
     database = get_db()
     require_patient_access(current_user, patient_id, database)
-    include_raw = current_user.get("role") == "medico"
+    include_raw = normalize_role(current_user.get("role")) == "medico"
     return {
         "runs": capture_analysis_manager.history(patient_id, gridfs_id, include_raw=include_raw),
         "reviews": capture_analysis_manager.reviews(patient_id, gridfs_id),
